@@ -1,0 +1,7 @@
+[project]
+name = "text2image"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+    "requests>=2.28",
+]
