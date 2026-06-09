@@ -8,6 +8,8 @@ import time
 
 import requests
 
+from auth.auth_client import with_auth, get_headers
+
 BASE_URL = "http://121.40.167.37:5000"
 ENDPOINT = "/api/generate-image"
 DEFAULT_OUTPUT_DIR = str(Path.home() / "Desktop" / "text2image")
@@ -18,6 +20,13 @@ MODELS = [
     "gemini-3.1-flash-image-preview",  # 别名: banana-2
     "gemini-3-pro-image-preview",      # 别名: banana-pro
 ]
+TIMEOUT = 240
+
+@with_auth
+def _request(url, fields, files=None):
+    if files:
+        return requests.post(url, data=fields, files=files, headers=get_headers(), timeout=TIMEOUT)
+    return requests.post(url, json=fields, headers=get_headers(), timeout=TIMEOUT)
 
 
 def generate(args: argparse.Namespace):
@@ -40,11 +49,11 @@ def generate(args: argparse.Namespace):
     try:
         if local_files:
             files = [("files", (os.path.basename(p), open(p, "rb"))) for p in local_files]
-            resp = requests.post(url, data=fields, files=files, timeout=120)
+            resp = _request(url, fields, files=files)
             for _, (_, f) in files:
                 f.close()
         else:
-            resp = requests.post(url, json=fields, timeout=120)
+            resp = _request(url, fields)
 
         resp.raise_for_status()
 
