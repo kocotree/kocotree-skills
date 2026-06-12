@@ -9,10 +9,42 @@ import requests
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://121.40.167.37:5050")
 _DEFAULT_TOKEN_PATH = os.path.join(Path.home(), ".kocotree-skills", "auth.json")
 _token_path = os.getenv("AUTH_TOKEN_PATH", _DEFAULT_TOKEN_PATH)
+_pending_path = os.path.join(Path.home(), ".kocotree-skills", ".auth_pending")
 _token_cache = None
 
-POLL_INTERVAL = 5
-POLL_TIMEOUT = 300
+POLL_INTERVAL = 3
+POLL_TIMEOUT = 60
+PENDING_EXPIRE = 300
+
+
+class AuthPendingError(Exception):
+    """授权链接已生成，等待用户在浏览器中完成授权。"""
+
+
+def _save_pending(state, authorize_url):
+    os.makedirs(os.path.dirname(_pending_path), exist_ok=True)
+    with open(_pending_path, "w", encoding="utf-8") as f:
+        json.dump({"state": state, "authorize_url": authorize_url,
+                    "created_at": int(time.time())}, f)
+
+
+def _load_pending():
+    try:
+        with open(_pending_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if time.time() - data.get("created_at", 0) > PENDING_EXPIRE:
+            _clear_pending()
+            return None
+        return data
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+
+def _clear_pending():
+    try:
+        os.remove(_pending_path)
+    except FileNotFoundError:
+        pass
 
 
 def _load_token():
@@ -67,19 +99,17 @@ def _refresh():
     return False
 
 
-def _oauth_login():
-    """完整 OAuth 流程：打开浏览器授权，轮询 auth 服务获取 token。"""
+def _get_auth_url():
+    """请求 auth 服务获取飞书授权链接和 state。"""
     resp = requests.get(f"{AUTH_SERVICE_URL}/api/v1/auth/login", timeout=10)
     result = resp.json()
     if result.get("code") != 0:
         raise RuntimeError(f"Failed to get authorize URL: {result.get('msg')}")
+    return result["data"]["authorize_url"], result["data"]["state"]
 
-    authorize_url = result["data"]["authorize_url"]
-    state = result["data"]["state"]
 
-    print("请完成飞书授权，手动在浏览器中打开以下链接：")
-    print(authorize_url)
-
+def _poll_token(state):
+    """轮询 auth 服务等待用户完成授权，成功后保存 token。"""
     start = time.time()
     while time.time() - start < POLL_TIMEOUT:
         time.sleep(POLL_INTERVAL)
@@ -92,16 +122,22 @@ def _oauth_login():
             result = resp.json()
             if result.get("code") == 0:
                 _save_token(result["data"])
-                print("授权成功。")
-                return
+                print("授权成功。", flush=True)
+                return True
         except requests.RequestException:
             pass
-
-    raise RuntimeError("授权超时，请重试。")
+    return False
 
 
 def ensure_token():
-    """确保本地有有效的 access_token，必要时刷新或重新登录。"""
+    """确保本地有有效的 access_token。
+
+    状态机：
+      有效 token       → 直接返回
+      可刷新           → 刷新后返回
+      有 pending       → 轮询服务端，成功返回，超时则清除 pending 抛异常
+      无 token 无 pending → 发起授权，保存 pending，打印链接，抛 AuthPendingError
+    """
     if not _is_access_token_expired():
         return
 
@@ -109,7 +145,18 @@ def ensure_token():
         if _refresh():
             return
 
-    _oauth_login()
+    pending = _load_pending()
+    if pending:
+        if _poll_token(pending["state"]):
+            _clear_pending()
+            return
+        _clear_pending()
+        raise RuntimeError("授权超时，请重新发起。")
+
+    authorize_url, state = _get_auth_url()
+    _save_pending(state, authorize_url)
+    print(f"请在浏览器中打开以下链接完成飞书授权：\n{authorize_url}", flush=True)
+    raise AuthPendingError("等待用户完成飞书授权，完成后请重试。")
 
 
 def get_headers():
@@ -122,7 +169,10 @@ def get_headers():
 
 
 def with_auth(f):
-    """装饰器：确保 token 有效后执行，401 时自动刷新重试。"""
+    """装饰器：确保 token 有效后执行，401 时自动刷新重试。
+
+    AuthPendingError 会直接抛出，调用方应捕获并提示用户完成授权后重试。
+    """
     @wraps(f)
     def decorated(*args, **kwargs):
         ensure_token()
