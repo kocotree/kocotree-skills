@@ -14,7 +14,7 @@ kocotree skills 合集
 
 ## Skills 目录
 
-| Skill | 说明 | 备注 | 需要校验 | 来源 |
+| Skill | 说明 | 备注 | 需要认证 | 来源 |
 |-------|------|------|:------:|------|
 | [find-skills](skills/find-skills/) | 发现并推荐可安装的 Agent Skill | 依赖 `npx skills` / skills.sh | ❌ | [vercel-labs skills](https://github.com/vercel-labs/skills/tree/main/skills/find-skills) |
 | [jushuitan-inventory-query](skills/jushuitan-inventory-query/) | 聚水潭库存简单查询 |    | ✅ |  鸭腿开发  |
