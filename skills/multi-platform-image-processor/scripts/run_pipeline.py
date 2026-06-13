@@ -24,7 +24,7 @@ from derive_vip import derive as derive_vip
 from quality_audit import run_quality_audit
 from scan_source_pack import scan_source_pack
 from write_report import write_report
-
+from auth.auth_client import ensure_token
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="全自动处理多平台商品图片包并输出中文报告。")
@@ -83,6 +83,7 @@ def resolve_source_and_output(source: Path, output_root: Path) -> tuple[Path, Pa
 
 
 def main(argv: list[str] | None = None) -> int:
+    ensure_token()
     args = parse_args(argv or sys.argv[1:])
     source_arg = resolve_path(args.source)
     template = resolve_path(args.template) if args.template else default_template_path()
