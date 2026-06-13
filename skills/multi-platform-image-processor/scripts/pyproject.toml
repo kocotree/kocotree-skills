@@ -1,0 +1,12 @@
+[project]
+name = "multi-platform-image-processor"
+version = "0.1.0"
+description = "全自动多平台商品图片包处理 skill"
+requires-python = ">=3.10"
+dependencies = [
+    "pillow>=10.0.0",
+    "pngquant-cli>=3.0.3",
+]
+
+[tool.uv]
+package = false
