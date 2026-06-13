@@ -83,7 +83,14 @@ def resolve_source_and_output(source: Path, output_root: Path) -> tuple[Path, Pa
 
 
 def main(argv: list[str] | None = None) -> int:
-    ensure_token()
+    try:
+        ensure_token()
+    except SystemExit:
+        return 1
+    except RuntimeError as e:
+        print(f"认证失败：{e}")
+        return 1
+
     args = parse_args(argv or sys.argv[1:])
     source_arg = resolve_path(args.source)
     template = resolve_path(args.template) if args.template else default_template_path()
