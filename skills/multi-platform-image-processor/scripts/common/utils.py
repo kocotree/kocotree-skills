@@ -108,10 +108,17 @@ def add_failure(report: dict[str, Any], message: str, **extra: Any) -> None:
 
 
 def add_review_suggestion(report: dict[str, Any], task: str, paths: list[Path], reason: str) -> None:
+    output_dir = Path(report.get("处理配置", {}).get("输出目录", ""))
+    short_paths = []
+    for p in paths:
+        try:
+            short_paths.append(str(p.relative_to(output_dir)))
+        except ValueError:
+            short_paths.append(p.name)
     report["Agent复核建议"].append(
         {
             "任务名称": task,
-            "图片路径": [str(p) for p in paths],
+            "图片路径": short_paths,
             "原因": reason,
         }
     )
