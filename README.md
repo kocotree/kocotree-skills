@@ -21,3 +21,4 @@ kocotree skills 合集
 | [text2image](skills/text2image/) | 文/图生图 | 模型：nano-banana-2、nano-banana-pro | ✅ | 鸭腿开发 |
 | [storage-analyzer](skills/storage-analyzer/) | 磁盘存储分析与清理建议（交互式 HTML 报告） |  不要完全信任ai给的建议  | ❌ | [khazix-skills](https://github.com/KKKKhazix/khazix-skills/tree/main/storage-analyzer) |
 | [hv-analysis](skills/hv-analysis/) | 横纵分析法深度研究（纵向追历程 + 横向比竞品，输出 PDF 报告） |    | ❌ | [khazix-skills](https://github.com/KKKKhazix/khazix-skills/tree/main/hv-analysis) |
+| [multi-platform-image-processor](skills/multi-platform-image-processor/) | 全自动处理商品图片数据包并输出多平台合规图片包（天猫、京东、CBME、唯品会、蜂享家＋爱库存、站外） | 支持批处理，依赖 text2image 去字 | ✅ | 鸭腿开发 |
