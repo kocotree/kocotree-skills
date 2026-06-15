@@ -53,4 +53,9 @@ def _copy_material_images(sources: list[Path], source_base: Path, output_dir: Pa
             relative = source.relative_to(source_base)
         except ValueError:
             relative = Path(source.name)
-        copy_file_original(source, output_dir / relative, report, 平台, "素材图")
+        out = output_dir / relative
+        ensure_dir(out.parent)
+        if source.suffix.lower() in (".png",):
+            process_png_original_or_compress(source, out.with_suffix(".png"), 500 * 1024, report, 平台, "素材图")
+        else:
+            process_jpg_original_or_compress(source, out.with_suffix(".jpg"), 500 * 1024, report, 平台, "素材图")
