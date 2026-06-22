@@ -332,6 +332,13 @@ def render_product_info(
         ("尺码", 1065.5, 70, 1855, 1420),
     ]
     for key, y, size, right, max_w in rows:
+        if key == "材质":
+            lines = [line for line in normalize_missing(info.get(key, "")).splitlines() if line.strip()]
+            offset = -34 * (len(lines) - 1)
+            for line in lines:
+                mixed_text(draw, fonts, (right, y + offset), line, size, anchor="rm", max_width=max_w, min_size=48)
+                offset += 68
+            continue
         mixed_text(draw, fonts, (right, y), product_info_value(data, info, key), size, anchor="rm", max_width=max_w, min_size=48)
     save_downsampled(img, output_dir / "01产品信息.jpg", out_w)
 
