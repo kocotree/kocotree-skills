@@ -20,9 +20,9 @@ TEXT2IMAGE_GITHUB_ZIP_URL = "https://github.com/ranjingya/kocotree-skills/archiv
 TEXT2IMAGE_GITHUB_SKILL_PATH = Path("skills") / "text2image"
 TEMP_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 TEXT_REMOVAL_PROMPT = (
-    "Edit the image with minimal changes. Only edit the right-side white product card area. Remove only the text on that card, including text inside colored decorative labels, product name text, and any other descriptive text.",
-    "The colored decorative labels may be red, green, or other colors, including top rounded color blocks and bottom curved color blocks. Strictly preserve the colored decorative labels themselves: keep their color, shape, size, position, rounded corners, curved edges, shadows, and borders unchanged. Only fill the removed text areas naturally with the same label color.",
-    "Do not add, keep, or generate any numbers, numbered circles, badges, small icons, symbols, labels, or extra decorations. The right-side white product card should remain clean except for the original product photo and the preserved colored decorative labels.",
+    "Edit the image with minimal changes. Only edit the right-side white product card area. Remove only the text on that card, including text inside colored decorative labels, product name text, and any other descriptive text. "
+    "The colored decorative labels may be red, green, or other colors, including top rounded color blocks and bottom curved color blocks. Strictly preserve the colored decorative labels themselves: keep their color, shape, size, position, rounded corners, curved edges, shadows, and borders unchanged. Only fill the removed text areas naturally with the same label color. "
+    "Do not add, keep, or generate any numbers, numbered circles, badges, small icons, symbols, labels, or extra decorations. The right-side white product card should remain clean except for the original product photo and the preserved colored decorative labels. "
     "Keep all other content strictly unchanged, including the left-side person, clothing, fabric labels, clothing logos, clothing patterns, prints, product images, background, material textures, lighting, and overall composition. Do not add any new text, logos, graphics, borders, or objects."
 )
 
