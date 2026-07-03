@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -39,11 +40,23 @@ def is_image(path: Path) -> bool:
     return path.is_file() and path.suffix.lower() in 图片后缀
 
 
+def natural_sort_key(path: Path) -> tuple:
+    parts = []
+    for token in re.split(r"(\d+)", path.as_posix().casefold()):
+        if not token:
+            continue
+        if token.isdigit():
+            parts.append((0, int(token), token))
+        else:
+            parts.append((1, token, ""))
+    return tuple(parts)
+
+
 def list_images(path: Path | None, recursive: bool = False) -> list[Path]:
     if path is None or not path.exists():
         return []
     iterator = path.rglob("*") if recursive else path.iterdir()
-    return sorted([p for p in iterator if is_image(p)], key=lambda p: p.name.lower())
+    return sorted([p for p in iterator if is_image(p)], key=natural_sort_key)
 
 
 def safe_relative_path(path: Path, root: Path | None = None) -> str:

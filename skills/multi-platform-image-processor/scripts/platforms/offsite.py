@@ -52,7 +52,7 @@ def derive(source_root: Path, template_root: Path | None, output_root: Path, rep
             report,
             "站外SKU去字质量判断",
             sku_outputs,
-            "脚本不调用大模型；需要Agent检查右侧绿色弧形底条白色文字是否去除，且绿色弧形、白色产品卡片和背景人物没有明显破坏。",
+            "已调用 text2image 模型去字；需要Agent检查右侧绿色弧形底条白色文字是否去除，且绿色弧形、白色产品卡片和背景人物没有明显破坏。",
         )
 
     _batch_jpg(get_image_group(source_root, "白底图"), platform_dir / "800白底图", "800白底图", report)
