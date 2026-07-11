@@ -85,7 +85,7 @@ def _audit_jd(root: Path, report: dict) -> None:
         info = image_info(path)
         if not info.get("有透明通道"):
             add_warning(report, "京东透明图未检测到透明通道", 文件=str(path))
-    _check_detail_sequence(root / "790详情页", 601, report)
+    _check_detail_sequence(root / "详情页", 601, report)
 
 
 def _audit_vip(root: Path, report: dict) -> None:
