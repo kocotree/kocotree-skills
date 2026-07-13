@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -161,6 +162,17 @@ def run_single(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """执行多平台图片包处理主流程。
+
+    参数：
+        argv：可选命令行参数列表；未提供时读取系统命令行参数。
+    返回值：
+        0 表示成功，1 表示存在失败项或认证失败，2 表示源目录不存在。
+    """
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s - %(message)s",
+    )
     try:
         ensure_token()
     except SystemExit:

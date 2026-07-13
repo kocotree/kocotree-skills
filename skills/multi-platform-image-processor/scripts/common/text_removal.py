@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -10,21 +11,27 @@ import threading
 import urllib.request
 import zipfile
 from pathlib import Path
+from uuid import uuid4
 
 from .utils import ensure_dir, add_failure, add_risk
 from .image_resize_compress import fit_into_canvas, open_image, save_jpg_under
+from .sku_card_crop import (
+    CardCropError,
+    build_model_input,
+    composite_editable_regions,
+    detect_right_card_plan,
+    normalize_model_output,
+    validate_protected_regions,
+)
 
 DEFAULT_TEXT2IMAGE_MODEL = "gemini-3-pro-image-preview"
 DEFAULT_TEXT2IMAGE_TIMEOUT = 300
 TEXT2IMAGE_GITHUB_ZIP_URL = "https://github.com/ranjingya/kocotree-skills/archive/refs/heads/master.zip"
 TEXT2IMAGE_GITHUB_SKILL_PATH = Path("skills") / "text2image"
 TEMP_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
-TEXT_REMOVAL_PROMPT = (
-    "Edit the image with minimal changes. Only edit the right-side white product card area. Remove only the text on that card, including text inside colored decorative labels, product name text, and any other descriptive text. "
-    "The colored decorative labels may be red, green, or other colors, including top rounded color blocks and bottom curved color blocks. Strictly preserve the colored decorative labels themselves: keep their color, shape, size, position, rounded corners, curved edges, shadows, and borders unchanged. Only fill the removed text areas naturally with the same label color. "
-    "Do not add, keep, or generate any numbers, numbered circles, badges, small icons, symbols, labels, or extra decorations. The right-side white product card should remain clean except for the original product photo and the preserved colored decorative labels. "
-    "Keep all other content strictly unchanged, including the left-side person, clothing, fabric labels, clothing logos, clothing patterns, prints, product images, background, material textures, lighting, and overall composition. Do not add any new text, logos, graphics, borders, or objects."
-)
+TEXT_REMOVAL_PROMPT = "Edit only the existing text inside the colored decorative label on the right-side product card. Remove the label text and fill only the removed character strokes with the surrounding original label background. Keep the input aspect ratio, composition, card position, label color, gradient, texture, outline, rounded corners, curved edges, shadows, product image, hand, background, canvas edges, and image corners unchanged. Do not create, remove, move, resize, recolor, or redraw any block, border, label, object, logo, symbol, number, or decoration. Do not modify text or logos printed on the product itself. If no removable label text is present or the target is uncertain, return the input unchanged."
+
+logger = logging.getLogger(__name__)
 
 
 # ── Path helpers ──────────────────────────────────────────────
@@ -287,31 +294,94 @@ def process_offsite_sku_text_removal(
     platform: str,
     cleanup_temp: bool = True,
 ) -> Path | None:
+    """处理单张站外 SKU 标签去字并按原坐标安全回贴。
+
+    功能说明：识别右侧商品卡片并向左增加安全余量，将右侧纵向裁片放入
+    与原图同尺寸的模型输入画布；模型返回后校验宽高比和受保护区域，
+    仅将彩色标签内部区域贴回原图。
+
+    参数：
+        source：原始 SKU 图片路径。
+        output：最终 JPG 输出路径。
+        max_bytes：最终文件大小上限。
+        report：处理报告字典。
+        platform：报告中的平台名称。
+        cleanup_temp：是否清理超过保留数量的临时图片。
+    返回值：
+        成功时返回最终输出路径，失败时返回 None。
+    """
     temp_dir = get_text_removal_temp_dir()
     try:
         ensure_dir(output.parent)
-        generated, message = _run_text_removal(source, temp_dir)
-        image_source = generated if generated else source
-        actions = [message] if generated else ["text2image 模型去字失败，按原图压缩输出"]
+        source_image = open_image(source)
+        logger.info("开始处理站外SKU去字：%s", source)
         try:
-            image = open_image(image_source)
-        except Exception as exc:
-            if generated:
-                add_risk(report, "模型生成图无法读取，已按原图压缩输出",
-                         源文件=str(source), 临时图=str(generated), 原因=str(exc))
-                image = open_image(source)
-                actions = ["text2image 模型生成图无法读取，按原图压缩输出"]
+            plan = detect_right_card_plan(source_image)
+        except CardCropError as exc:
+            logger.warning("商品卡片识别失败，按原图输出：%s，原因：%s", source, exc)
+            add_risk(report, "商品卡片或彩色标签识别失败，已按原图压缩输出",
+                     源文件=str(source), 原因=str(exc))
+            image = source_image
+            actions = ["商品卡片或彩色标签识别失败，按原图压缩输出"]
+        else:
+            logger.info(
+                "商品卡片识别完成：card_x=%d-%d，crop_x=%d-%d，标签数=%d",
+                plan.card_left,
+                plan.card_right - 1,
+                plan.crop_left,
+                source_image.width - 1,
+                len(plan.label_boxes),
+            )
+            model_input = build_model_input(source_image, plan)
+            model_input_path = temp_dir / f"{source.stem}-{uuid4().hex}-input.png"
+            model_input.save(model_input_path, format="PNG")
+            generated, message = _run_text_removal(model_input_path, temp_dir)
+            actions = [
+                f"识别右侧商品卡片，左侧安全余量{plan.card_left - plan.crop_left}px",
+                f"模型输入尺寸{model_input.width}x{model_input.height}",
+            ]
+            if generated is None:
+                logger.warning("模型去字失败，按原图输出：%s，原因：%s", source, message)
+                image = source_image
+                actions.append("text2image 模型去字失败，按原图压缩输出")
+                add_risk(report, "模型去字失败，已按原图压缩输出",
+                         源文件=str(source), 输出文件=str(output), 原因=message)
             else:
-                raise
+                try:
+                    generated_image = open_image(generated)
+                    normalized = normalize_model_output(generated_image, model_input.size)
+                    audit = validate_protected_regions(source_image, normalized, plan)
+                    if not audit["通过"]:
+                        raise CardCropError(
+                            "模型修改了标签文字区域以外的内容："
+                            f"平均通道差异{audit['平均通道差异']}，"
+                            f"明显变化比例{audit['明显变化比例']}"
+                        )
+                    image = composite_editable_regions(source_image, normalized, plan)
+                    actions.extend([
+                        message,
+                        f"模型输出恢复到{model_input.width}x{model_input.height}",
+                        "受保护区域差异验收通过",
+                        "仅回贴彩色标签内部，标签边缘和其他区域保持原图",
+                    ])
+                    logger.info("站外SKU模型结果验收通过：%s", source)
+                except Exception as exc:
+                    logger.warning("模型结果验收失败，按原图输出：%s，原因：%s", source, exc)
+                    image = source_image
+                    actions.append("模型结果验收失败，按原图压缩输出")
+                    add_risk(report, "模型结果验收失败，已按原图压缩输出",
+                             源文件=str(source), 临时图=str(generated), 原因=str(exc))
+
+        if image.size != source_image.size:
+            raise CardCropError(f"最终拼接尺寸与原图不一致：{image.size} != {source_image.size}")
+        actions.append(f"最终图保持原图尺寸{source_image.width}x{source_image.height}")
         image = fit_into_canvas(image, (800, 800))
         actions.append("适配到 800x800 画布")
         saved = save_jpg_under(
             image, output, max_bytes, report,
             source, platform, "800sku去除文字", actions,
         )
-        if generated is None:
-            add_risk(report, "模型去字失败，已按原图压缩输出",
-                     源文件=str(source), 输出文件=str(saved or output), 原因=message)
+        logger.info("站外SKU去字处理结束：%s -> %s", source, saved or output)
         return saved
     except Exception as exc:
         add_failure(report, "站外SKU去字失败",

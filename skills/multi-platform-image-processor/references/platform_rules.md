@@ -62,10 +62,10 @@
 
 ## 站外通用版
 
-- `800sku去除文字`：来源 `SKU` 里的 800 图，处理范围限定为右侧产品卡片上彩色装饰条（顶部圆角色块、底部弧形色块）内的文字；装饰条本身的颜色、形状、圆角、弧度保持不变；产品图、人物、衣服印花、织标、背景保持不变。没有装饰条或没有文字时原样复制压缩。输出 JPG，单张小于 `500KB`。
+- `800sku去除文字`：来源 `SKU` 里的 800 图。脚本从右向左识别白色商品卡片的左边缘，向左增加图片宽度 `3%` 的安全余量，截取右侧纵向区域；该区域放入与原图同尺寸、同宽高比的模型输入画布。模型只处理商品卡片彩色装饰条内的文字。模型结果恢复到模型输入尺寸后，检查标签内部以外的区域是否发生明显变化，最终只将标签内部去字区域贴回原图。装饰条的颜色、形状、圆角、弧度保持不变；产品图、人物、衣服印花、织标、背景、图片四角保持原图。没有可识别装饰条、没有文字、模型输出宽高比异常或验收失败时按原图压缩输出并记录风险。最终输出 `800x800 JPG`，单张小于 `500KB`。
   - Agent 审核去字结果时，若效果不理想（误删元素、残留、变形、多加元素等），可直接使用安装时捆绑的 `text2image` skill 对问题图片单独重新生成，根据具体产品特征自行调整提示词。脚本使用的默认提示词供参考：
     ```
-    Edit the image with minimal changes. Only edit the right-side white product card area. Remove only the text on that card, including text inside colored decorative labels, product name text, and any other descriptive text. The colored decorative labels may be red, green, or other colors, including top rounded color blocks and bottom curved color blocks. Strictly preserve the colored decorative labels themselves: keep their color, shape, size, position, rounded corners, curved edges, shadows, and borders unchanged. Only fill the removed text areas naturally with the same label color. Do not add, keep, or generate any numbers, numbered circles, badges, small icons, symbols, labels, or extra decorations. The right-side white product card should remain clean except for the original product photo and the preserved colored decorative labels. Keep all other content strictly unchanged, including the left-side person, clothing, fabric labels, clothing logos, clothing patterns, prints, product images, background, material textures, lighting, and overall composition. Do not add any new text, logos, graphics, borders, or objects.
+    Edit only the existing text inside the colored decorative label on the right-side product card. Remove the label text and fill only the removed character strokes with the surrounding original label background. Keep the input aspect ratio, composition, card position, label color, gradient, texture, outline, rounded corners, curved edges, shadows, product image, hand, background, canvas edges, and image corners unchanged. Do not create, remove, move, resize, recolor, or redraw any block, border, label, object, logo, symbol, number, or decoration. Do not modify text or logos printed on the product itself. If no removable label text is present or the target is uncertain, return the input unchanged.
     ```
 - `800白底图`：来源 `白底图`，直接复制或压缩，单张小于 `500KB`。
 - `800白底图＋logo`：来源 `白底图`，叠加模板里的 `logo3.png`，logo 位置和大小不二次调整，输出 JPG，单张小于 `500KB`。
