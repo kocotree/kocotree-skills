@@ -118,7 +118,8 @@ def run_single(
         prune_report_files(report_path.parent)
         return 2
 
-    validation = validate_source_pack(source)
+    validation_assets_dir = report_path.parent / f"{report_path.stem}-assets" / "透明图问题"
+    validation = validate_source_pack(source, validation_assets_dir)
     report["输入包检测"] = validation
     report["素材扫描"] = scan_source_pack(source)
     for warning in validation["警告"]:
@@ -145,6 +146,10 @@ def run_single(
         print(f"输入包检测失败，已停止处理：{source}")
         print("标准输入结构：")
         print(validation["标准输入结构"])
+        if validation.get("透明图问题汇总"):
+            print(f"透明图问题汇总：{validation['透明图问题汇总']}")
+        for diagnostic_path in validation.get("透明图诊断图", []):
+            print(f"透明图诊断图：{diagnostic_path}")
         print(f"报告路径：{report_path}")
         return 2
 

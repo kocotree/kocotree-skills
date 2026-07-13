@@ -68,15 +68,22 @@ class SourcePackValidatorTests(unittest.TestCase):
 
     def test_transparent_debris_is_rejected(self) -> None:
         with TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir) / "数据包"
+            temp_root = Path(temp_dir)
+            root = temp_root / "数据包"
+            visualization_dir = temp_root / "诊断图"
             create_standard_pack(root, dirty=True)
 
-            result = validate_source_pack(root)
+            result = validate_source_pack(root, visualization_dir)
 
             self.assertFalse(result["通过"])
             debris = next(item for item in result["问题"] if "独立残留像素" in item["信息"])
             self.assertEqual(debris["主体外独立区域数"], 1)
             self.assertEqual(debris["主体外像素数"], 1)
+            self.assertTrue(Path(debris["可视化诊断图"]).exists())
+            self.assertTrue(Path(result["透明图问题汇总"]).exists())
+            with Image.open(debris["可视化诊断图"]) as diagnostic:
+                self.assertGreater(diagnostic.height, 40)
+                self.assertEqual(diagnostic.mode, "RGB")
 
     def test_regular_image_dimensions_are_not_checked(self) -> None:
         with TemporaryDirectory() as temp_dir:

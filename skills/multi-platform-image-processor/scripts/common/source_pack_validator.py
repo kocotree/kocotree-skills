@@ -8,6 +8,7 @@ from typing import Any
 from PIL import Image
 
 from .scan_source_pack import resolve_sku_root, resolve_source_path
+from .transparent_issue_visualizer import render_transparent_issue, render_transparent_overview
 from .utils import list_images
 
 
@@ -67,7 +68,10 @@ logger = logging.getLogger(__name__)
       └─ ..."""
 
 
-def validate_source_pack(source_root: Path) -> dict[str, Any]:
+def validate_source_pack(
+    source_root: Path,
+    visualization_dir: Path | None = None,
+) -> dict[str, Any]:
     """强制检查标准输入文件夹结构和透明图脏点。
 
     功能说明：检查标准目录名称、必需目录是否存在且包含图片，并检查每张
@@ -75,6 +79,7 @@ def validate_source_pack(source_root: Path) -> dict[str, Any]:
 
     参数：
         source_root：待处理的数据包根目录。
+        visualization_dir：透明图脏点诊断图输出目录；未提供时只返回坐标数据。
     返回值：
         包含“通过”“问题”“警告”和“识别目录”的结构化检测结果。
     """
@@ -110,11 +115,19 @@ def validate_source_pack(source_root: Path) -> dict[str, Any]:
     _check_detail_directory(source_root, problems, recognized)
     _check_optional_material_directory(source_root, warnings, recognized)
 
+    diagnostic_paths = []
     transparent_path = resolve_source_path(source_root, "透明图")
     for image_path in list_images(transparent_path):
-        _check_transparent_image(image_path, problems)
+        diagnostic_path = _check_transparent_image(image_path, problems, visualization_dir)
+        if diagnostic_path:
+            diagnostic_paths.append(diagnostic_path)
 
     result = _result(problems, warnings, recognized)
+    if diagnostic_paths:
+        result["透明图诊断图"] = [str(path) for path in diagnostic_paths]
+        overview = render_transparent_overview(diagnostic_paths, visualization_dir or diagnostic_paths[0].parent)
+        if overview:
+            result["透明图问题汇总"] = str(overview)
     if result["通过"]:
         logger.info("输入包结构和透明图检测通过：%s", source_root)
     else:
@@ -224,7 +237,11 @@ def _check_optional_material_directory(
         warnings.append({"信息": "可选目录素材图为空", "路径": str(material_path)})
 
 
-def _check_transparent_image(image_path: Path, problems: list[dict[str, Any]]) -> None:
+def _check_transparent_image(
+    image_path: Path,
+    problems: list[dict[str, Any]],
+    visualization_dir: Path | None,
+) -> Path | None:
     try:
         with Image.open(image_path) as image:
             image_format = (image.format or image_path.suffix.lstrip(".")).upper()
@@ -232,20 +249,29 @@ def _check_transparent_image(image_path: Path, problems: list[dict[str, Any]]) -
             alpha = rgba.getchannel("A")
     except Exception as exc:
         _add_problem(problems, "透明图无法读取", image_path, str(exc))
-        return
+        return None
 
     if image_format != "PNG":
         _add_problem(problems, f"透明图必须为PNG，实际为{image_format}", image_path)
     minimum, maximum = alpha.getextrema()
     if minimum == maximum == 255:
         _add_problem(problems, "透明图没有实际透明背景", image_path)
-        return
+        return None
     components = _alpha_components(alpha)
     if not components:
         _add_problem(problems, "透明图没有可见主体", image_path)
-        return
+        return None
     debris = components[1:]
     if debris:
+        diagnostic_path = None
+        if visualization_dir is not None:
+            diagnostic_path = render_transparent_issue(
+                image_path,
+                rgba,
+                alpha,
+                debris,
+                visualization_dir,
+            )
         _add_problem(
             problems,
             "透明图主体外存在独立残留像素",
@@ -255,7 +281,10 @@ def _check_transparent_image(image_path: Path, problems: list[dict[str, Any]]) -
             主体外像素数=sum(item["像素数"] for item in debris),
             最大残留透明度=max(item["最大透明度"] for item in debris),
             残留边界=[item["边界"] for item in debris[:20]],
+            **({"可视化诊断图": str(diagnostic_path)} if diagnostic_path else {}),
         )
+        return diagnostic_path
+    return None
 
 
 def _alpha_components(alpha: Image.Image) -> list[dict[str, Any]]:
@@ -292,6 +321,7 @@ def _alpha_components(alpha: Image.Image) -> list[dict[str, Any]]:
             "像素数": count,
             "边界": [min_x, min_y, max_x + 1, max_y + 1],
             "最大透明度": max_alpha,
+            "起点": [start % width, start // width],
         })
     return sorted(components, key=lambda item: item["像素数"], reverse=True)
 
