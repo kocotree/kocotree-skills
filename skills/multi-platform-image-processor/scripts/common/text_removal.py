@@ -26,6 +26,7 @@ from .sku_card_crop import (
 
 DEFAULT_TEXT2IMAGE_MODEL = "gemini-3-pro-image-preview"
 DEFAULT_TEXT2IMAGE_TIMEOUT = 300
+TEXT_REMOVAL_MAX_ATTEMPTS = 2
 TEXT2IMAGE_GITHUB_ZIP_URL = "https://github.com/ranjingya/kocotree-skills/archive/refs/heads/master.zip"
 TEXT2IMAGE_GITHUB_SKILL_PATH = Path("skills") / "text2image"
 TEMP_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
@@ -335,18 +336,28 @@ def process_offsite_sku_text_removal(
             model_input = build_model_input(source_image, plan)
             model_input_path = temp_dir / f"{source.stem}-{uuid4().hex}-input.png"
             model_input.save(model_input_path, format="PNG")
-            generated, message = _run_text_removal(model_input_path, temp_dir)
             actions = [
                 f"识别右侧商品卡片，左侧安全余量{plan.card_left - plan.crop_left}px",
                 f"模型输入尺寸{model_input.width}x{model_input.height}",
             ]
-            if generated is None:
-                logger.warning("模型去字失败，按原图输出：%s，原因：%s", source, message)
-                image = source_image
-                actions.append("text2image 模型去字失败，按原图压缩输出")
-                add_risk(report, "模型去字失败，已按原图压缩输出",
-                         源文件=str(source), 输出文件=str(output), 原因=message)
-            else:
+            image = None
+            attempt_failures: list[str] = []
+            generated_paths: list[str] = []
+            for attempt in range(1, TEXT_REMOVAL_MAX_ATTEMPTS + 1):
+                logger.info(
+                    "调用站外SKU去字模型：%s，第%d/%d次",
+                    source,
+                    attempt,
+                    TEXT_REMOVAL_MAX_ATTEMPTS,
+                )
+                generated, message = _run_text_removal(model_input_path, temp_dir)
+                if generated is None:
+                    reason = f"第{attempt}次模型调用失败：{message}"
+                    attempt_failures.append(reason)
+                    actions.append(reason)
+                    logger.warning("%s", reason)
+                    continue
+                generated_paths.append(str(generated))
                 try:
                     generated_image = open_image(generated)
                     normalized = normalize_model_output(generated_image, model_input.size)
@@ -360,7 +371,7 @@ def process_offsite_sku_text_removal(
                         )
                     image = composite_editable_regions(source_image, normalized, plan)
                     actions.extend([
-                        message,
+                        f"第{attempt}次模型去字成功：{message}",
                         f"模型输出恢复到{model_input.width}x{model_input.height}",
                         (
                             "右侧受保护区域差异验收通过："
@@ -373,13 +384,28 @@ def process_offsite_sku_text_removal(
                         ),
                         "仅回贴彩色标签内部，标签边缘和其他区域保持原图",
                     ])
-                    logger.info("站外SKU模型结果验收通过：%s", source)
+                    logger.info("站外SKU模型结果验收通过：%s，第%d次", source, attempt)
+                    break
                 except Exception as exc:
-                    logger.warning("模型结果验收失败，按原图输出：%s，原因：%s", source, exc)
-                    image = source_image
-                    actions.append("模型结果验收失败，按原图压缩输出")
-                    add_risk(report, "模型结果验收失败，已按原图压缩输出",
-                             源文件=str(source), 临时图=str(generated), 原因=str(exc))
+                    reason = f"第{attempt}次模型结果验收失败：{exc}"
+                    attempt_failures.append(reason)
+                    actions.append(reason)
+                    logger.warning("%s", reason)
+
+            if image is None:
+                image = source_image
+                actions.append(
+                    f"模型去字尝试{TEXT_REMOVAL_MAX_ATTEMPTS}次仍失败，按原图压缩输出"
+                )
+                add_risk(
+                    report,
+                    "模型去字重试后仍失败，已按原图压缩输出",
+                    源文件=str(source),
+                    输出文件=str(output),
+                    尝试次数=TEXT_REMOVAL_MAX_ATTEMPTS,
+                    临时图=generated_paths,
+                    原因=attempt_failures,
+                )
 
         if image.size != source_image.size:
             raise CardCropError(f"最终拼接尺寸与原图不一致：{image.size} != {source_image.size}")

@@ -28,6 +28,28 @@ def create_sample_sku() -> Image.Image:
     return image
 
 
+def create_model_candidates(source: Path, output_dir: Path) -> tuple[Path, Path]:
+    """根据实际保存后的测试原图创建验收失败和验收通过的模型候选图。"""
+    original = Image.open(source).convert("RGB")
+    plan = detect_right_card_plan(original)
+    model_input = build_model_input(original, plan)
+
+    bad_path = output_dir / "bad.png"
+    bad_image = model_input.copy()
+    ImageDraw.Draw(bad_image).rectangle(
+        (plan.crop_left, 0, original.width - 1, round(original.height * 0.62)),
+        fill=(220, 60, 55),
+    )
+    bad_image.save(bad_path)
+
+    good_path = output_dir / "good.png"
+    good_image = model_input.copy()
+    editable_box = plan.editable_boxes[0]
+    ImageDraw.Draw(good_image).rectangle(editable_box, fill=(42, 165, 78))
+    good_image.save(good_path)
+    return bad_path, good_path
+
+
 class SkuCardCropTests(unittest.TestCase):
     """验证站外 SKU 右侧裁片定位、尺寸约束和受保护区域验收。"""
 
@@ -123,21 +145,13 @@ class SkuCardCropTests(unittest.TestCase):
             audit["标签内部非文字变化比例阈值"],
         )
 
-    def test_process_rejects_bad_model_result_and_outputs_original(self) -> None:
+    def test_process_retries_model_call_failure_and_can_succeed(self) -> None:
         with TemporaryDirectory() as temp_dir_value:
             temp_dir = Path(temp_dir_value)
             source = temp_dir / "source.jpg"
             output = temp_dir / "output.jpg"
-            bad_generated = temp_dir / "bad.png"
             create_sample_sku().save(source, quality=95)
-            original = create_sample_sku()
-            plan = detect_right_card_plan(original)
-            bad_image = build_model_input(original, plan)
-            ImageDraw.Draw(bad_image).rectangle(
-                (plan.crop_left, 0, 799, 500),
-                fill=(220, 60, 55),
-            )
-            bad_image.save(bad_generated)
+            _, good_generated = create_model_candidates(source, temp_dir)
             report = {"风险": [], "失败项": [], "警告": [], "图片记录": []}
 
             with patch(
@@ -145,8 +159,11 @@ class SkuCardCropTests(unittest.TestCase):
                 return_value=temp_dir,
             ), patch(
                 "common.text_removal._run_text_removal",
-                return_value=(bad_generated, "测试模型结果"),
-            ):
+                side_effect=[
+                    (None, "第一次模型调用失败"),
+                    (good_generated, "第二次模型调用成功"),
+                ],
+            ) as run_mock:
                 saved = process_offsite_sku_text_removal(
                     source,
                     output,
@@ -157,7 +174,101 @@ class SkuCardCropTests(unittest.TestCase):
                 )
 
             self.assertIsNotNone(saved)
-            self.assertTrue(report["风险"])
+            self.assertEqual(run_mock.call_count, 2)
+            self.assertFalse(report["风险"])
+
+    def test_process_retries_validation_failure_and_can_succeed(self) -> None:
+        with TemporaryDirectory() as temp_dir_value:
+            temp_dir = Path(temp_dir_value)
+            source = temp_dir / "source.jpg"
+            output = temp_dir / "output.jpg"
+            create_sample_sku().save(source, quality=95)
+            bad_generated, good_generated = create_model_candidates(source, temp_dir)
+            report = {"风险": [], "失败项": [], "警告": [], "图片记录": []}
+
+            with patch(
+                "common.text_removal.get_text_removal_temp_dir",
+                return_value=temp_dir,
+            ), patch(
+                "common.text_removal._run_text_removal",
+                side_effect=[
+                    (bad_generated, "第一次模型结果"),
+                    (good_generated, "第二次模型结果"),
+                ],
+            ) as run_mock:
+                saved = process_offsite_sku_text_removal(
+                    source,
+                    output,
+                    500 * 1024,
+                    report,
+                    "站外通用版",
+                    cleanup_temp=False,
+                )
+
+            self.assertIsNotNone(saved)
+            self.assertEqual(run_mock.call_count, 2)
+            self.assertFalse(report["风险"])
+
+    def test_process_records_after_second_model_call_failure(self) -> None:
+        with TemporaryDirectory() as temp_dir_value:
+            temp_dir = Path(temp_dir_value)
+            source = temp_dir / "source.jpg"
+            output = temp_dir / "output.jpg"
+            create_sample_sku().save(source, quality=95)
+            report = {"风险": [], "失败项": [], "警告": [], "图片记录": []}
+
+            with patch(
+                "common.text_removal.get_text_removal_temp_dir",
+                return_value=temp_dir,
+            ), patch(
+                "common.text_removal._run_text_removal",
+                return_value=(None, "模型服务不可用"),
+            ) as run_mock:
+                saved = process_offsite_sku_text_removal(
+                    source,
+                    output,
+                    500 * 1024,
+                    report,
+                    "站外通用版",
+                    cleanup_temp=False,
+                )
+
+            self.assertIsNotNone(saved)
+            self.assertEqual(run_mock.call_count, 2)
+            self.assertEqual(len(report["风险"]), 1)
+            self.assertEqual(report["风险"][0]["尝试次数"], 2)
+            self.assertEqual(len(report["风险"][0]["原因"]), 2)
+
+    def test_process_rejects_bad_model_result_and_outputs_original(self) -> None:
+        with TemporaryDirectory() as temp_dir_value:
+            temp_dir = Path(temp_dir_value)
+            source = temp_dir / "source.jpg"
+            output = temp_dir / "output.jpg"
+            create_sample_sku().save(source, quality=95)
+            bad_generated, _ = create_model_candidates(source, temp_dir)
+            report = {"风险": [], "失败项": [], "警告": [], "图片记录": []}
+
+            with patch(
+                "common.text_removal.get_text_removal_temp_dir",
+                return_value=temp_dir,
+            ), patch(
+                "common.text_removal._run_text_removal",
+                return_value=(bad_generated, "测试模型结果"),
+            ) as run_mock:
+                saved = process_offsite_sku_text_removal(
+                    source,
+                    output,
+                    500 * 1024,
+                    report,
+                    "站外通用版",
+                    cleanup_temp=False,
+                )
+
+            self.assertIsNotNone(saved)
+            self.assertEqual(run_mock.call_count, 2)
+            self.assertEqual(len(report["风险"]), 1)
+            self.assertEqual(report["风险"][0]["尝试次数"], 2)
+            self.assertEqual(len(report["风险"][0]["原因"]), 2)
             saved_image = Image.open(saved).convert("RGB")
             red, green, blue = saved_image.getpixel((600, 60))
             self.assertLess(abs(red - green), 10)
