@@ -350,18 +350,27 @@ def process_offsite_sku_text_removal(
                 try:
                     generated_image = open_image(generated)
                     normalized = normalize_model_output(generated_image, model_input.size)
-                    audit = validate_protected_regions(source_image, normalized, plan)
+                    audit = validate_protected_regions(model_input, normalized, plan)
                     if not audit["通过"]:
                         raise CardCropError(
-                            "模型修改了标签文字区域以外的内容："
+                            "模型结果未通过右侧及标签内部验收："
                             f"平均通道差异{audit['平均通道差异']}，"
-                            f"明显变化比例{audit['明显变化比例']}"
+                            f"明显变化比例{audit['明显变化比例']}，"
+                            f"标签内部非文字变化比例{audit['标签内部非文字变化比例']}"
                         )
                     image = composite_editable_regions(source_image, normalized, plan)
                     actions.extend([
                         message,
                         f"模型输出恢复到{model_input.width}x{model_input.height}",
-                        "受保护区域差异验收通过",
+                        (
+                            "右侧受保护区域差异验收通过："
+                            f"平均通道差异{audit['平均通道差异']}/"
+                            f"{audit['平均通道差异阈值']}，"
+                            f"明显变化比例{audit['明显变化比例']}/"
+                            f"{audit['明显变化比例阈值']}，"
+                            f"标签内部非文字变化比例{audit['标签内部非文字变化比例']}/"
+                            f"{audit['标签内部非文字变化比例阈值']}"
+                        ),
                         "仅回贴彩色标签内部，标签边缘和其他区域保持原图",
                     ])
                     logger.info("站外SKU模型结果验收通过：%s", source)

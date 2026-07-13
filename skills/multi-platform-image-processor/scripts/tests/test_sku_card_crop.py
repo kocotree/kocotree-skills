@@ -51,7 +51,21 @@ class SkuCardCropTests(unittest.TestCase):
             model_input.crop(plan.crop_box).tobytes(),
             image.crop(plan.crop_box).tobytes(),
         )
-        self.assertEqual(model_input.getpixel((100, 400)), image.getpixel((0, 0)))
+        self.assertEqual(model_input.getpixel((100, 400)), (255, 255, 255))
+
+    def test_validation_only_compares_right_crop(self) -> None:
+        image = create_sample_sku()
+        plan = detect_right_card_plan(image)
+        model_input = build_model_input(image, plan)
+        generated = model_input.copy()
+        ImageDraw.Draw(generated).rectangle((0, 0, plan.crop_left - 1, 799), fill=(0, 0, 0))
+
+        audit = validate_protected_regions(model_input, generated, plan)
+
+        self.assertTrue(audit["通过"])
+        self.assertEqual(audit["平均通道差异"], 0.0)
+        self.assertEqual(audit["明显变化比例"], 0.0)
+        self.assertEqual(audit["比较起始X"], plan.crop_left)
 
     def test_normalize_model_output_accepts_proportional_resolution(self) -> None:
         generated = create_sample_sku().resize((1600, 1600))
@@ -62,22 +76,24 @@ class SkuCardCropTests(unittest.TestCase):
     def test_validation_rejects_change_outside_label(self) -> None:
         image = create_sample_sku()
         plan = detect_right_card_plan(image)
-        generated = image.copy()
+        model_input = build_model_input(image, plan)
+        generated = model_input.copy()
         draw = ImageDraw.Draw(generated)
-        draw.rounded_rectangle((520, 20, 750, 100), radius=18, fill=(220, 60, 55))
+        draw.rectangle((plan.crop_left, 0, 799, 500), fill=(220, 60, 55))
 
-        audit = validate_protected_regions(image, generated, plan)
+        audit = validate_protected_regions(model_input, generated, plan)
 
         self.assertFalse(audit["通过"])
 
     def test_composite_only_changes_label_interior(self) -> None:
         image = create_sample_sku()
         plan = detect_right_card_plan(image)
-        generated = image.copy()
+        model_input = build_model_input(image, plan)
+        generated = model_input.copy()
         editable_box = plan.editable_boxes[0]
         ImageDraw.Draw(generated).rectangle(editable_box, fill=(42, 165, 78))
 
-        audit = validate_protected_regions(image, generated, plan)
+        audit = validate_protected_regions(model_input, generated, plan)
         result = composite_editable_regions(image, generated, plan)
 
         self.assertTrue(audit["通过"])
@@ -88,6 +104,25 @@ class SkuCardCropTests(unittest.TestCase):
             image.crop(editable_box).tobytes(),
         )
 
+    def test_validation_rejects_new_object_inside_label(self) -> None:
+        image = create_sample_sku()
+        plan = detect_right_card_plan(image)
+        model_input = build_model_input(image, plan)
+        generated = model_input.copy()
+        left, top, right, bottom = plan.editable_boxes[0]
+        ImageDraw.Draw(generated).rectangle(
+            (right - (right - left) // 3, top, right - 1, bottom - 1),
+            fill=(225, 175, 145),
+        )
+
+        audit = validate_protected_regions(model_input, generated, plan)
+
+        self.assertFalse(audit["通过"])
+        self.assertGreater(
+            audit["标签内部非文字变化比例"],
+            audit["标签内部非文字变化比例阈值"],
+        )
+
     def test_process_rejects_bad_model_result_and_outputs_original(self) -> None:
         with TemporaryDirectory() as temp_dir_value:
             temp_dir = Path(temp_dir_value)
@@ -95,10 +130,11 @@ class SkuCardCropTests(unittest.TestCase):
             output = temp_dir / "output.jpg"
             bad_generated = temp_dir / "bad.png"
             create_sample_sku().save(source, quality=95)
-            bad_image = create_sample_sku()
-            ImageDraw.Draw(bad_image).rounded_rectangle(
-                (520, 20, 750, 100),
-                radius=18,
+            original = create_sample_sku()
+            plan = detect_right_card_plan(original)
+            bad_image = build_model_input(original, plan)
+            ImageDraw.Draw(bad_image).rectangle(
+                (plan.crop_left, 0, 799, 500),
                 fill=(220, 60, 55),
             )
             bad_image.save(bad_generated)

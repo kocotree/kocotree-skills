@@ -62,7 +62,7 @@ def derive(source_root: Path, template_root: Path | None, output_root: Path, rep
         overlay_logo(source, logo, logo_dir / f"{source.stem}.jpg", 500 * 1024, report, 平台, "800白底图＋logo")
     _batch_png(get_image_group(source_root, "透明图"), platform_dir / "800透明图", "800透明图", report)
     material_dir = ensure_dir(platform_dir / "素材图")
-    material_base = source_root / 源目录规则["素材图"]
+    material_base = resolve_source_path(source_root, "素材图")
     for source in get_image_group(source_root, "素材图", recursive=True):
         try:
             relative = source.relative_to(material_base)

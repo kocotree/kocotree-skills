@@ -6,10 +6,13 @@ from PIL import Image
 
 
 默认左侧安全余量比例 = 0.03
-标签保护边缘像素 = 6
+标签保护边缘像素 = 2
 近白色阈值 = 247
 近白色色差阈值 = 8
 彩色色差阈值 = 35
+受保护区平均差异阈值 = 10.0
+受保护区明显变化比例阈值 = 0.15
+标签内部非文字变化比例阈值 = 0.12
 
 
 class CardCropError(RuntimeError):
@@ -94,13 +97,12 @@ def build_model_input(image: Image.Image, plan: CardCropPlan) -> Image.Image:
         image：原始 SKU 图片。
         plan：右侧商品卡片裁切计划。
     返回值：
-        与原图宽高一致的 RGB 图片，左侧为背景色，右侧为原始裁片。
+        与原图宽高一致的 RGB 图片，左侧为白色，右侧为原始裁片。
     """
     rgb = image.convert("RGB")
     if rgb.size != plan.image_size:
         raise CardCropError(f"裁切计划尺寸与原图不一致：{plan.image_size} != {rgb.size}")
-    background = rgb.getpixel((0, 0))
-    canvas = Image.new("RGB", rgb.size, background)
+    canvas = Image.new("RGB", rgb.size, (255, 255, 255))
     crop = rgb.crop(plan.crop_box)
     canvas.paste(crop, (plan.crop_left, 0))
     return canvas
@@ -129,34 +131,38 @@ def normalize_model_output(image: Image.Image, expected_size: tuple[int, int]) -
 
 
 def validate_protected_regions(
-    original: Image.Image,
+    model_input: Image.Image,
     generated: Image.Image,
     plan: CardCropPlan,
-    max_mean_difference: float = 8.0,
-    max_changed_ratio: float = 0.03,
-) -> dict[str, float | bool]:
-    """检查模型是否修改了标签文字区域以外的右侧裁片。
+    max_mean_difference: float = 受保护区平均差异阈值,
+    max_changed_ratio: float = 受保护区明显变化比例阈值,
+    max_unexpected_edit_ratio: float = 标签内部非文字变化比例阈值,
+) -> dict[str, float | bool | int]:
+    """检查模型是否大幅修改标签文字区域以外的右侧裁片。
 
     参数：
-        original：原始 SKU 图片。
+        model_input：发送给模型的同尺寸输入画布。
         generated：已恢复到输入尺寸的模型结果。
         plan：右侧商品卡片裁切计划。
         max_mean_difference：受保护区域允许的平均通道差异上限。
         max_changed_ratio：受保护区域允许的明显变化像素比例上限。
+        max_unexpected_edit_ratio：标签内部非文字底图发生明显变化的比例上限。
     返回值：
         包含是否通过、平均差异和明显变化比例的验收结果。
     """
-    original_rgb = original.convert("RGB")
+    input_rgb = model_input.convert("RGB")
     generated_rgb = generated.convert("RGB")
-    if original_rgb.size != generated_rgb.size or original_rgb.size != plan.image_size:
-        raise CardCropError("原图、模型输出和裁切计划的尺寸必须一致")
+    if input_rgb.size != generated_rgb.size or input_rgb.size != plan.image_size:
+        raise CardCropError("模型输入、模型输出和裁切计划的尺寸必须一致")
 
     editable_boxes = plan.editable_boxes
-    source_pixels = original_rgb.load()
+    source_pixels = input_rgb.load()
     output_pixels = generated_rgb.load()
     total_difference = 0
     compared_pixels = 0
     changed_pixels = 0
+    editable_pixels = 0
+    unexpected_edit_pixels = 0
     width, height = plan.image_size
 
     for y in range(height):
@@ -171,15 +177,35 @@ def validate_protected_regions(
             if max(differences) > 25:
                 changed_pixels += 1
 
+    for left, top, right, bottom in editable_boxes:
+        for y in range(top, bottom):
+            for x in range(left, right):
+                source_pixel = source_pixels[x, y]
+                output_pixel = output_pixels[x, y]
+                differences = [abs(a - b) for a, b in zip(source_pixel, output_pixel)]
+                editable_pixels += 1
+                if max(differences) > 25 and not _is_likely_light_text_pixel(source_pixel):
+                    unexpected_edit_pixels += 1
+
     if compared_pixels == 0:
         raise CardCropError("没有可用于验收的受保护区域")
     mean_difference = total_difference / (compared_pixels * 3)
     changed_ratio = changed_pixels / compared_pixels
-    passed = mean_difference <= max_mean_difference and changed_ratio <= max_changed_ratio
+    unexpected_edit_ratio = unexpected_edit_pixels / max(1, editable_pixels)
+    passed = (
+        mean_difference <= max_mean_difference
+        and changed_ratio <= max_changed_ratio
+        and unexpected_edit_ratio <= max_unexpected_edit_ratio
+    )
     return {
         "通过": passed,
         "平均通道差异": round(mean_difference, 4),
         "明显变化比例": round(changed_ratio, 6),
+        "平均通道差异阈值": max_mean_difference,
+        "明显变化比例阈值": max_changed_ratio,
+        "标签内部非文字变化比例": round(unexpected_edit_ratio, 6),
+        "标签内部非文字变化比例阈值": max_unexpected_edit_ratio,
+        "比较起始X": plan.crop_left,
     }
 
 
@@ -297,3 +323,8 @@ def _inside_any_box(
     boxes: tuple[tuple[int, int, int, int], ...],
 ) -> bool:
     return any(left <= x < right and top <= y < bottom for left, top, right, bottom in boxes)
+
+
+def _is_likely_light_text_pixel(pixel: tuple[int, int, int]) -> bool:
+    """判断原标签像素是否可能属于浅色文字笔画。"""
+    return min(pixel) >= 180 and max(pixel) - min(pixel) <= 40
