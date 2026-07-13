@@ -14,11 +14,13 @@ from common import (
     new_report,
     add_platform_result,
     add_failure,
+    add_warning,
     resolve_path,
     ensure_dir,
 )
 from common.quality_audit import run_quality_audit
 from common.scan_source_pack import scan_source_pack
+from common.source_pack_validator import validate_source_pack
 from common.write_report import write_report
 from platforms.tmall import build as build_tmall
 from platforms.cbme import derive as derive_cbme
@@ -104,7 +106,6 @@ def run_single(
     if report_path is None:
         report_path = default_report_path(output)
 
-    ensure_dir(output)
     report = new_report(source, template, output, platform)
     if product_name:
         report["处理配置"]["产品名"] = product_name
@@ -117,13 +118,43 @@ def run_single(
         prune_report_files(report_path.parent)
         return 2
 
+    validation = validate_source_pack(source)
+    report["输入包检测"] = validation
+    report["素材扫描"] = scan_source_pack(source)
+    for warning in validation["警告"]:
+        add_warning(
+            report,
+            warning["信息"],
+            **{key: value for key, value in warning.items() if key != "信息"},
+        )
+    if not validation["通过"]:
+        for problem in validation["问题"]:
+            add_failure(
+                report,
+                "输入包检测失败",
+                问题=problem["信息"],
+                **{key: value for key, value in problem.items() if key != "信息"},
+            )
+        logging.getLogger(__name__).error(
+            "输入包检测失败，停止处理：%s，共%d项问题",
+            source,
+            len(validation["问题"]),
+        )
+        write_report(report, report_path)
+        prune_report_files(report_path.parent)
+        print(f"输入包检测失败，已停止处理：{source}")
+        print("标准输入结构：")
+        print(validation["标准输入结构"])
+        print(f"报告路径：{report_path}")
+        return 2
+
+    ensure_dir(output)
+
     selected = 全部平台 if platform == "all" else [platform]
     if "tmall" not in selected:
         tmall_needed = any(p in selected for p in ["cbme", "jd", "vip", "fengxiang-aikucun"])
     else:
         tmall_needed = True
-
-    report["素材扫描"] = scan_source_pack(source)
 
     for key in selected:
         copy_template_empty_dirs(template, 平台目录名[key], output / 平台目录名[key])

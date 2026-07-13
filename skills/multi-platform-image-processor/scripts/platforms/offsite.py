@@ -6,7 +6,7 @@ from pathlib import Path
 from common import ensure_dir, copy_file_original, add_review_suggestion
 from common.image_resize_compress import process_jpg_original_or_compress, process_png_original_or_compress
 from common.logo_overlay import find_logo, overlay_logo
-from common.scan_source_pack import 源目录规则, get_image_group, get_sku800_recursive
+from common.scan_source_pack import get_image_group, get_sku800_recursive, resolve_source_path
 from common.text_removal import ensure_text2image_ready, get_text_removal_temp_dir, process_offsite_sku_text_removal, prune_temp_images
 
 
@@ -27,7 +27,7 @@ def derive(source_root: Path, template_root: Path | None, output_root: Path, rep
             sku_sources = []
     if sku_sources:
         used_output_paths: set[Path] = set()
-        sku_base = source_root / 源目录规则["SKU"]
+        sku_base = resolve_source_path(source_root, "SKU")
         sku_tasks = [(source, _sku_output_path(source, sku_base, sku_dir, used_output_paths)) for source in sku_sources]
         with ThreadPoolExecutor(max_workers=SKU_TEXT_REMOVAL_CONCURRENCY) as executor:
             futures = [

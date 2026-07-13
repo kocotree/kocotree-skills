@@ -91,6 +91,7 @@ def new_report(source: Path, template: Path | None, output: Path, platform: str)
             "平台参数": platform,
             "开始时间": datetime.now().isoformat(timespec="seconds"),
         },
+        "输入包检测": {},
         "素材扫描": {},
         "平台结果": {},
         "图片记录": [],
