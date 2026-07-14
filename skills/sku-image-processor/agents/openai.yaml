@@ -1,0 +1,6 @@
+interface:
+  display_name: "SKU图片处理器"
+  short_description: "服装类目批量合成1440x1440 SKU成品图"
+  default_prompt: "Use $sku-image-processor to generate apparel SKU delivery images from 模板.png, model photos, and transparent product images."
+policy:
+  allow_implicit_invocation: true
