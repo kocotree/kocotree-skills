@@ -14,21 +14,28 @@ class OutputLayout:
 
     参数:
         batch_root: 批次输出根目录。
+        legacy_layout: 是否使用控制文件直接位于批次根目录的兼容结构。
     返回值:
         输出路径布局实例。
     """
 
     batch_root: Path
+    legacy_layout: bool = False
+
+    @property
+    def work_dir(self) -> Path:
+        """返回流程文件目录；旧批次兼容使用批次根目录。"""
+        return self.batch_root if self.legacy_layout else self.batch_root / "work"
 
     @property
     def annotations_path(self) -> Path:
         """返回标注清单路径。"""
-        return self.batch_root / "annotations.json"
+        return self.work_dir / "annotations.json"
 
     @property
     def summary_path(self) -> Path:
         """返回汇总文件路径。"""
-        return self.batch_root / "summary.json"
+        return self.work_dir / "summary.json"
 
     @property
     def final_dir(self) -> Path:
@@ -38,12 +45,12 @@ class OutputLayout:
     @property
     def annotated_dir(self) -> Path:
         """返回标注可视化图片目录。"""
-        return self.batch_root / "annotated"
+        return self.work_dir / "annotated"
 
     @property
     def crops_dir(self) -> Path:
         """返回裁切检查图目录。"""
-        return self.batch_root / "crops"
+        return self.work_dir / "crops"
 
     @property
     def template_regions_path(self) -> Path:
@@ -100,7 +107,10 @@ def layout_from_annotations(annotations_path: Path) -> OutputLayout:
     返回值:
         输出路径布局实例。
     """
-    return OutputLayout(annotations_path.resolve().parent)
+    resolved = annotations_path.resolve()
+    if resolved.parent.name == "work":
+        return OutputLayout(resolved.parent.parent)
+    return OutputLayout(resolved.parent, legacy_layout=True)
 
 
 def load_summary(layout: OutputLayout) -> dict[str, Any]:
@@ -113,7 +123,7 @@ def load_summary(layout: OutputLayout) -> dict[str, Any]:
     """
     if layout.summary_path.exists():
         return read_json(layout.summary_path)
-    return {"batch_root": str(layout.batch_root), "stages": {}}
+    return {"batch_root": str(layout.batch_root), "work_dir": str(layout.work_dir), "stages": {}}
 
 
 def update_summary(layout: OutputLayout, stage: str, payload: dict[str, Any]) -> dict[str, Any]:

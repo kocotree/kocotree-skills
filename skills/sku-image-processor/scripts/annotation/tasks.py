@@ -38,19 +38,19 @@ def _pose_guides_by_item(summary: dict[str, Any]) -> dict[tuple[str, str], dict[
     return guides
 
 
-def _item_paths(batch_root: Path, product: str, color: str) -> dict[str, str]:
+def _item_paths(annotated_dir: Path, product: str, color: str) -> dict[str, str]:
     """组装单色标注需要查看的辅助材料路径。
 
     参数:
-        batch_root: 批次输出目录。
+        annotated_dir: 标注检查图片目录。
         product: 商品名。
         color: 颜色名。
     返回值:
         辅助材料路径字典。
     """
     return {
-        "grid": str(batch_root / "annotated" / product / f"{color}_grid.jpg"),
-        "skeleton": str(batch_root / "annotated" / product / f"{color}_skeleton.jpg"),
+        "grid": str(annotated_dir / product / f"{color}_grid.jpg"),
+        "skeleton": str(annotated_dir / product / f"{color}_skeleton.jpg"),
     }
 
 
@@ -82,7 +82,7 @@ def build_annotation_tasks(annotations_path: Path, output_dir: Path | None = Non
                     "source_image": info.get("source_image", ""),
                     "source_size": info.get("source_size", []),
                     "template_regions": str(layout.template_regions_path),
-                    "materials": _item_paths(annotations_path.parent, product, color),
+                    "materials": _item_paths(layout.annotated_dir, product, color),
                     "required_annotation_fields": ["crop_box"],
                     "crop_box_rules": CROP_BOX_RULES,
                     "pose_crop_guides": pose_guides.get((product, color), {}),
@@ -91,7 +91,8 @@ def build_annotation_tasks(annotations_path: Path, output_dir: Path | None = Non
 
     payload = {
         "annotations": str(annotations_path),
-        "batch_root": str(annotations_path.parent),
+        "batch_root": str(layout.batch_root),
+        "work_dir": str(layout.work_dir),
         "task_count": len(tasks),
         "crop_box_rules": CROP_BOX_RULES,
         "tasks": tasks,

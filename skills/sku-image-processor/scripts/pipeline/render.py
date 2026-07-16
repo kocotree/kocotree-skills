@@ -2,8 +2,8 @@
 
 输出固定为三类图片：
 - final/: 验收 pass 的最终交付图。
-- annotated/: 网格、骨架、源图裁切框、生图补齐和成品拼接示例等标注图片。
-- crops/: 按最终 crop_box 裁出的检查图。
+- work/annotated/: 网格、骨架、源图裁切框、生图补齐和成品拼接示例等标注图片。
+- work/crops/: 按最终 crop_box 裁出的检查图。
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from PIL import Image
 from core.annotations import annotation_is_valid, load_annotations, resolve_product_dir
 from core.config import WorkflowConfig, load_config
 from core.geometry import empty_layout
-from core.output_layout import OutputLayout, update_summary
+from core.output_layout import OutputLayout, layout_from_annotations, update_summary
 from core.utils import clear_directory, get_logger
 from model.place import FillModelRetryableError, place_from_annotation
 from product.product_render import draw_label, place_product
@@ -43,7 +43,7 @@ def run_render(
     参数:
         input_root: 素材根目录（用于定位透明商品图）。
         output_root: 成品交付目录，固定为批次 final/。
-        qa_root: 批次输出目录。
+        qa_root: 批次输出目录；兼容参数，实际布局由 annotations_path 解析。
         font_path: 颜色名标签字体路径。
         annotations_path: prep 生成、agent 填好的标注清单路径。
         template_path: 模板路径；若 input_root 下存在 模板.png 则优先使用它。
@@ -78,8 +78,13 @@ def run_render(
     if clean_output and output_root.exists():
         clear_directory(output_root)
     output_root.mkdir(parents=True, exist_ok=True)
-    qa_root.mkdir(parents=True, exist_ok=True)
-    layout = OutputLayout(qa_root)
+    layout = layout_from_annotations(annotations_path)
+    if layout.batch_root.resolve() != qa_root.resolve():
+        logger.warning("传入批次目录与 annotations 路径不一致，使用后者: %s", layout.batch_root)
+    if output_root.resolve() != layout.final_dir.resolve():
+        logger.warning("传入成品目录与固定 final 目录不一致，使用后者: %s", layout.final_dir)
+        output_root = layout.final_dir
+    layout.work_dir.mkdir(parents=True, exist_ok=True)
     layout.annotated_dir.mkdir(parents=True, exist_ok=True)
     clear_directory(layout.crops_dir)
     for old_preview in layout.annotated_dir.rglob("*_preview_boxes.jpg"):
@@ -92,7 +97,8 @@ def run_render(
     report: dict[str, Any] = {
         "version": "apparel_layered_v3",
         "input_root": str(input_root),
-        "output_root": str(qa_root),
+        "output_root": str(layout.batch_root),
+        "work_root": str(layout.work_dir),
         "final_root": str(output_root),
         "annotated_root": str(layout.annotated_dir),
         "crops_root": str(layout.crops_dir),

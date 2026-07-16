@@ -8,7 +8,7 @@ from PIL import Image
 
 from core.annotations import load_annotations
 from core.config import WorkflowConfig, load_config
-from core.output_layout import OutputLayout
+from core.output_layout import layout_from_annotations
 from core.utils import get_logger
 from model.common import prepare_image
 from pose.annotation import build_annotation_draft
@@ -78,7 +78,7 @@ def run_pose_assist(
     else:
         logger.warning("annotations 中的模板路径不可用，骨架辅助流程使用默认配置: %s", template_path)
         cfg = WorkflowConfig()
-    layout = OutputLayout(annotations_path.parent)
+    layout = layout_from_annotations(annotations_path)
     output_root = annotated_root or layout.annotated_dir
     output_root.mkdir(parents=True, exist_ok=True)
 

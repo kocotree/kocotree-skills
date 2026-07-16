@@ -2,7 +2,7 @@
 name: sku-image-processor
 description: SKU 图片处理器 skill：用于服装类目 1440x1440 SKU 图片模板流程，基于模板、模特图、透明商品图和颜色名，生成最终图、标注检查图和裁切检查图。
 metadata:
-  version: 1.0.0
+  version: 1.1.0
 ---
 
 # SKU 图片处理器（sku-image-processor）
@@ -68,32 +68,37 @@ uv run python main.py ...
 默认输出只保留三类图片和两个控制文件：
 
 ```text
-scripts/output/<批次>/
-  annotations.json
-  summary.json
+scripts/output/<YYYYMMDD-HHMMSS>_<输入目录名>/
   final/
     <商品目录>/<颜色名>.jpg|png
-  annotated/
-    _template_regions.jpg
-    _final_contact_sheet.jpg
-    <商品目录>/
-      <颜色名>_grid.jpg
-      <颜色名>_skeleton.jpg
-      <颜色名>_fill_input.jpg
-      <颜色名>_fill_result.jpg
-  crops/
-    <商品目录>/<颜色名>_crop.jpg
+  work/
+    annotations.json
+    summary.json
+    annotated/
+      _template_regions.jpg
+      _final_contact_sheet.jpg
+      <商品目录>/
+        <颜色名>_grid.jpg
+        <颜色名>_skeleton.jpg
+        <颜色名>_fill_input.jpg
+        <颜色名>_fill_result.jpg
+    crops/
+      <商品目录>/<颜色名>_crop.jpg
 ```
 
 约定：
 
 - `final/`：最终可交付图片。
-- `annotated/`：模板参考线、网格、骨架、源图裁切框、生图补齐输入/结果和成品拼接示例等标注检查图片。
-- `crops/`：按最终 `crop_box` 得到的裁切检查图片，越界时包含生成模型补齐的背景。
-- `annotations.json`：标注清单，agent 或视觉模型在这里填写坐标。
-- `summary.json`：各阶段摘要、校验结果、失败项和关键路径。
+- `work/annotated/`：模板参考线、网格、骨架、源图裁切框、生图补齐输入/结果和成品拼接示例等标注检查图片。
+- `work/crops/`：按最终 `crop_box` 得到的裁切检查图片，越界时包含生成模型补齐的背景。
+- `work/annotations.json`：标注清单，agent 或视觉模型在这里填写坐标。
+- `work/summary.json`：各阶段摘要、校验结果、失败项和关键路径。
 
-输出目录固定为 `scripts/output/`。CLI 不提供外部输出目录参数，后续阶段只接受该目录下的 `annotations.json`。
+内部批次固定写入 `scripts/output/`。`render` 必须提供 `--output <目录>`，脚本把 `final/` 中的最终图片复制到该交付目录；过程文件始终保留在批次 `work/` 中。
+
+agent 必须在渲染前确定一个不存在或为空的交付目录。任务结束时只向用户展示交付目录和最终图片，不展示批次目录、`work/` 路径或内部检查图；`work/` 仅供 agent 验收与排错。
+
+`scripts/output/` 最多保留 50 个批次。每次 `prep` 成功后按批次时间删除最早目录，直到批次数量恢复为 50；本轮新建批次始终保留。
 
 ## 流程分工
 
@@ -106,27 +111,28 @@ scripts/output/<批次>/
 
 `annotate` 由脚本汇总任务，由 agent 或视觉模型填写：
 
-- 查看 `annotated/` 下的模板参考线、网格图和骨架图。
-- 在 `annotations.json` 中填写 `crop_box`。
+- 查看 `work/annotated/` 下的模板参考线、网格图和骨架图。
+- 在 `work/annotations.json` 中填写 `crop_box`。
 - 构图以 `body_box.top` 距顶部约 `120px`、`crop_box` 下边界位于髋点至 `garment_box` 下限区间约 `60%` 的位置、人物关键区域完整、人物在左侧视觉居中、右侧商品贴片完整无遮挡为准；`garment_box` 不能直接作为裁切框。
 - YOLO 输出只作参考，不能直接替代最终视觉判断。
 
 `validate-annotation` 由脚本自动执行：
 
 - 校验 `crop_box` 坐标格式、方形和源图重叠区域。
-- 结果写入 `summary.json`。
+- 结果写入 `work/summary.json`。
 
 `render` 由脚本自动执行：
 
 - 按标注裁切模特图，越界时补齐背景，并按模板配置自动生成右侧商品贴片与颜色名。
-- 生图 API 临时失败时先跳过该图继续处理批次，全部图片处理完后等待并重试一次；仍失败则在 `summary.json` 标记并告知用户。
-- 输出 `final/`、叠加红色裁切框的 `annotated/*_skeleton.jpg`、`annotated/*_fill_input.jpg`、`annotated/*_fill_result.jpg`、`annotated/_final_contact_sheet.jpg` 和 `crops/*_crop.jpg`。
+- 生图 API 临时失败时先跳过该图继续处理批次，全部图片处理完后等待并重试一次；仍失败则在 `work/summary.json` 标记并告知用户。
+- 输出 `final/`、叠加红色裁切框的 `work/annotated/*_skeleton.jpg`、`work/annotated/*_fill_input.jpg`、`work/annotated/*_fill_result.jpg`、`work/annotated/_final_contact_sheet.jpg` 和 `work/crops/*_crop.jpg`。
+- 必须通过 `--output` 只导出 `final/` 中的图片，并把导出状态写入 `work/summary.json`。
 - `pass` 输出最终图，`fail` 只保留检查图和摘要。
 
 `review` 由脚本汇总，由 agent 复查：
 
-- 从 `summary.json` 汇总失败项。
-- agent 根据 `annotated/` 和 `crops/` 修正标注后重新校验与渲染。
+- 从 `work/summary.json` 汇总失败项。
+- agent 根据 `work/annotated/` 和 `work/crops/` 修正标注后重新校验与渲染。
 
 ## 必读规则
 
@@ -164,12 +170,13 @@ scripts/output/<批次>/
 ```powershell
 cd scripts
 uv run python main.py prep --input-root "<input-root>"
-uv run python main.py annotate --annotations "output\<批次>\annotations.json"
-uv run python main.py validate-annotation --annotations "output\<批次>\annotations.json"
+uv run python main.py annotate --annotations "output\<批次>\work\annotations.json"
+uv run python main.py validate-annotation --annotations "output\<批次>\work\annotations.json"
 uv run python main.py render `
   --input-root "<input-root>" `
-  --annotations "output\<批次>\annotations.json"
-uv run python main.py review --annotations "output\<批次>\annotations.json"
+  --annotations "output\<批次>\work\annotations.json" `
+  --output "<交付目录>"
+uv run python main.py review --annotations "output\<批次>\work\annotations.json"
 ```
 
 常用参数：

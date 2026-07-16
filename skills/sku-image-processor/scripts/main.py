@@ -16,7 +16,9 @@ from pathlib import Path
 from annotation.check import validate_annotations
 from annotation.review import build_review_report
 from annotation.tasks import build_annotation_tasks
-from core.output_layout import layout_from_annotations
+from core.export import export_final_images
+from core.output_layout import layout_from_annotations, update_summary
+from core.retention import enforce_batch_retention
 from core.utils import setup_logging
 from pipeline.prep import run_prep
 from pipeline.render import run_render
@@ -26,7 +28,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 SKILL_ROOT = SCRIPTS_DIR.parent
 DEFAULT_FONT = SKILL_ROOT / "assets" / "方正兰亭中黑_GBK-Regular.ttf"
 DEFAULT_TEMPLATE = SKILL_ROOT / "template" / "模板.png"
-# 批次输出根目录：scripts/output/<输入目录名>_<时间戳>/
+# 批次输出根目录：scripts/output/<时间戳>_<输入目录名>/
 DEFAULT_OUTPUT_BASE = SCRIPTS_DIR / "output"
 
 
@@ -54,11 +56,16 @@ def _resolve_output_annotations(annotations_path: Path) -> Path:
     resolved = annotations_path.resolve()
     output_base = DEFAULT_OUTPUT_BASE.resolve()
     if resolved.name != "annotations.json":
-        raise SystemExit("annotations 参数必须指向 scripts/output/<批次>/annotations.json")
+        raise SystemExit("annotations 参数必须指向 scripts/output/<批次>/work/annotations.json")
     try:
         resolved.relative_to(output_base)
     except ValueError as exc:
         raise SystemExit("输出目录固定为 scripts/output，请使用该目录下的 annotations.json") from exc
+    relative_parts = resolved.relative_to(output_base).parts
+    is_current = len(relative_parts) == 3 and relative_parts[-2:] == ("work", "annotations.json")
+    is_legacy = len(relative_parts) == 2
+    if not is_current and not is_legacy:
+        raise SystemExit("annotations 参数必须指向 output/<批次>/work/annotations.json")
     return resolved
 
 
@@ -85,6 +92,12 @@ def parse_args() -> argparse.Namespace:
     render.add_argument("--annotations", type=Path, required=True, help="prep 生成、agent 填好的 annotations.json")
     render.add_argument("--template-file", type=Path, default=DEFAULT_TEMPLATE, help="SKU 模板 PNG，缺省用自带模板")
     render.add_argument("--font-file", type=Path, default=DEFAULT_FONT, help="颜色名标签字体，缺省用自带字体")
+    render.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="最终图片交付目录，必须不存在或为空",
+    )
 
     review = sub.add_parser("review", help="根据 summary.json 生成失败复查摘要")
     review.add_argument("--annotations", type=Path, required=True, help="批次 annotations.json")
@@ -98,9 +111,10 @@ def main() -> None:
 
     if args.command == "prep":
         template_path = _resolve_template(args.input_root, args.template_file)
-        # 批次目录固定在 scripts/output/<输入目录名>_<时间戳>/
+        # 批次目录固定在 scripts/output/<时间戳>_<输入目录名>/
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        batch_root = DEFAULT_OUTPUT_BASE / f"{args.input_root.name}_{timestamp}"
+        batch_root = DEFAULT_OUTPUT_BASE / f"{timestamp}_{args.input_root.name}"
+        layout = layout_from_annotations(batch_root / "work" / "annotations.json")
         run_prep(
             input_root=args.input_root,
             batch_root=batch_root,
@@ -109,7 +123,9 @@ def main() -> None:
             pose_confidence=args.pose_confidence,
             skip_pose=args.skip_pose,
         )
-        print(f"prep 完成，标注清单: {batch_root / 'annotations.json'}")
+        retention_report = enforce_batch_retention(DEFAULT_OUTPUT_BASE, protected_batch=batch_root)
+        update_summary(layout, "retention", retention_report)
+        print(f"prep 完成，标注清单: {layout.annotations_path}")
         print("下一步运行 annotate 生成标注任务摘要，填写后运行 validate-annotation。")
         return
 
@@ -117,7 +133,8 @@ def main() -> None:
         annotations_path = _resolve_output_annotations(args.annotations)
         report = build_annotation_tasks(annotations_path)
         print(f"annotate 任务摘要完成: {report['task_count']} 项")
-        print(f"请查看 summary.json 与 annotated/ 图片后填写 annotations.json")
+        layout = layout_from_annotations(annotations_path)
+        print(f"请查看 {layout.summary_path} 与 {layout.annotated_dir} 后填写 {layout.annotations_path}")
         return
 
     if args.command == "validate-annotation":
@@ -144,11 +161,18 @@ def main() -> None:
         annotations_path=annotations_path,
         template_path=template_path,
     )
+    try:
+        export_report = export_final_images(layout.final_dir, args.output)
+    except Exception as exc:
+        update_summary(
+            layout,
+            "export",
+            {"status": "fail", "output": str(args.output.resolve()), "error": str(exc)},
+        )
+        raise
+    update_summary(layout, "export", export_report)
     print(f"render 完成: {report['summary']}")
-    print(f"成品图目录: {layout.final_dir}")
-    if report.get("contact_sheet"):
-        print(f"完整示例图: {report['contact_sheet']}")
-    print(f"批次目录: {layout.batch_root}")
+    print(f"交付目录: {export_report['output']}（{export_report['images']} 张）")
 
 
 if __name__ == "__main__":
