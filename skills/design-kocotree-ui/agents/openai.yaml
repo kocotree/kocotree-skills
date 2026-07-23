@@ -1,0 +1,5 @@
+interface:
+  display_name: "Kocotree UI 设计"
+  short_description: "为 Kocotree 软件界面提供统一、克制且可复用的设计语言"
+  brand_color: "#009139"
+  default_prompt: "使用 $design-kocotree-ui 设计或检查一个符合 Kocotree UI 规范的软件界面。"

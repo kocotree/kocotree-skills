@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kocotree UI Playground</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="playground" id="playground" data-color-strategy="standard" data-density="comfortable">
+      <header class="topbar">
+        <a class="brand" href="#top" aria-label="返回顶部">
+          <span class="brand-symbol" aria-hidden="true">K</span>
+          <span class="brand-name">Kocotree <span>UI Playground</span></span>
+        </a>
+        <nav class="section-nav" aria-label="页面分区">
+          <a href="#foundation">基础</a>
+          <a href="#components">组件</a>
+          <a href="#composition">组合</a>
+        </nav>
+        <span class="draft-badge">设计探索稿</span>
+      </header>
+
+      <main id="top">
+        <section class="hero">
+          <div class="hero-copy">
+            <span class="eyebrow">KOCOTREE UI · EXPLORATION 01</span>
+            <h1>专业工具，<br />保留一点探索感。</h1>
+            <p>白色工作面、细边框和紧凑信息密度。品牌识别集中在绿色操作、圆形树冠与 60° 切角，不把实体 VI 的装饰纹样铺满软件界面。</p>
+            <div class="hero-actions">
+              <button class="button primary" type="button" data-toast-trigger>体验主操作</button>
+              <button class="button secondary" type="button" data-modal-open>查看模态框</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="control-bar" aria-label="预览控制">
+          <div class="control-group">
+            <span class="control-label">主色策略</span>
+            <div class="segmented" data-control="color">
+              <button class="active" type="button" data-color-value="standard">VI 标准绿</button>
+              <button type="button" data-color-value="soft">柔和交互绿</button>
+            </div>
+          </div>
+          <div class="strategy-result">
+            <span class="strategy-dot"></span>
+            <strong id="strategy-name">#009139</strong>
+            <span id="strategy-description">识别强，主操作更鲜明</span>
+          </div>
+          <div class="control-group density-control">
+            <span class="control-label">组件密度</span>
+            <div class="segmented" data-control="density">
+              <button class="active" type="button" data-density-value="comfortable">舒适</button>
+              <button type="button" data-density-value="compact">紧凑</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="content-section" id="foundation">
+          <header class="section-heading">
+            <div><span class="section-kicker">FOUNDATION</span><h2>视觉基础</h2></div>
+            <p>品牌色用于识别，灰阶承担大部分界面信息。</p>
+          </header>
+
+          <div class="foundation-grid">
+            <article class="panel color-panel">
+              <header class="panel-heading"><h3>颜色</h3><span>来自品牌 VI</span></header>
+              <div class="swatch-grid">
+                <div class="swatch"><span style="--swatch:#009139"></span><div><strong>品牌绿</strong><code>#009139</code><small>主操作 / 选中</small></div></div>
+                <div class="swatch"><span style="--swatch:#221814"></span><div><strong>墨黑</strong><code>#221814</code><small>标题 / 关键信息</small></div></div>
+                <div class="swatch warm"><span style="--swatch:#F8F8F1"></span><div><strong>暖白</strong><code>#F8F8F1</code><small>分区 / 空状态</small></div></div>
+                <div class="swatch"><span style="--swatch:#B0CED5"></span><div><strong>浅蓝灰</strong><code>#B0CED5</code><small>信息 / 辅助</small></div></div>
+                <div class="swatch"><span style="--swatch:#E16B51"></span><div><strong>珊瑚红</strong><code>#E16B51</code><small>异常 / 提醒</small></div></div>
+                <div class="swatch"><span style="--swatch:#EDDC53"></span><div><strong>探索黄</strong><code>#EDDC53</code><small>警告 / 标记</small></div></div>
+              </div>
+            </article>
+
+            <article class="panel type-panel">
+              <header class="panel-heading"><h3>字体</h3><span>软件系统字体</span></header>
+              <div class="type-specimen">
+                <div class="type-display"><span>Display · 32/40</span><strong>Skill 浏览</strong></div>
+                <div class="type-title"><span>Title · 15/22</span><strong>代码审查助手</strong></div>
+                <div class="type-body"><span>Body · 13/20</span><p>按照团队规范检查变更，输出可执行的审查意见。</p></div>
+                <div class="type-code"><span>Utility · 11/16</span><code>code-review · v1.4.2</code></div>
+              </div>
+              <div class="geometry-row" aria-label="圆角与间距规范">
+                <div><span class="radius-demo radius-small"></span><strong>6</strong><small>徽标</small></div>
+                <div><span class="radius-demo radius-medium"></span><strong>8</strong><small>控件</small></div>
+                <div><span class="radius-demo radius-large"></span><strong>12</strong><small>面板</small></div>
+                <div class="spacing-demo"><span></span><span></span><span></span><strong>4px</strong><small>间距基数</small></div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-section" id="components">
+          <header class="section-heading">
+            <div><span class="section-kicker">COMPONENTS</span><h2>基础组件</h2></div>
+            <p>操作层级清楚，状态变化克制且可感知。</p>
+          </header>
+
+          <div class="component-grid">
+            <article class="panel">
+              <header class="panel-heading"><h3>按钮</h3><span>常用状态</span></header>
+              <div class="component-block">
+                <div class="row-wrap">
+                  <button class="button primary" type="button" data-toast-trigger><span class="button-icon">＋</span>安装 Skill</button>
+                  <button class="button secondary" type="button" data-modal-open>查看详情</button>
+                  <button class="button ghost" type="button">取消</button>
+                </div>
+                <div class="row-wrap">
+                  <button class="button danger" type="button">移除本地文件</button>
+                  <button class="button primary" type="button" disabled>正在安装</button>
+                  <button class="icon-button" type="button" aria-label="添加 Skill" data-tooltip="添加 Skill">＋</button>
+                </div>
+                <small class="guidance">每个操作区只保留一个主按钮。</small>
+              </div>
+            </article>
+
+            <article class="panel">
+              <header class="panel-heading"><h3>Tooltip</h3><span>Hover / Focus</span></header>
+              <div class="component-block">
+                <div class="tooltip-example-row">
+                  <button class="icon-button" type="button" aria-label="复制 Skill 名称" data-tooltip="复制 Skill 名称">⧉</button>
+                  <button class="icon-button" type="button" aria-label="查看使用说明" data-tooltip="查看使用说明" data-tooltip-placement="bottom">?</button>
+                  <span class="tooltip-text-demo" tabindex="0" data-tooltip="design-kocotree-ui · Kocotree 软件界面设计规范">design-kocotree-ui · Kocotree 软件界面设计规范</span>
+                </div>
+                <small class="guidance">简短补充说明使用 Tooltip；复杂内容和操作使用 Popover。</small>
+              </div>
+            </article>
+
+            <article class="panel">
+              <header class="panel-heading"><h3>输入与选择</h3><span>表单状态</span></header>
+              <div class="form-stack">
+                <label class="field"><span>展示名称</span><input id="display-name" type="text" maxlength="40" placeholder="例如：代码审查助手" /><small><span id="display-name-count">0</span>/40 · 对所有使用者可见</small></label>
+                <div class="field-row">
+                  <div class="field custom-select-field">
+                    <span id="category-label">用途分类</span>
+                    <div class="custom-select" id="category-select">
+                      <button class="select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="category-label category-value">
+                        <span id="category-value">开发工具</span>
+                        <span class="select-chevron" aria-hidden="true"></span>
+                      </button>
+                      <div class="select-menu" role="listbox" aria-labelledby="category-label" hidden>
+                        <button class="select-option selected" type="button" role="option" aria-selected="true" data-value="开发工具">
+                          <span><strong>开发工具</strong><small>代码、调试与研发辅助</small></span><i>✓</i>
+                        </button>
+                        <button class="select-option" type="button" role="option" aria-selected="false" data-value="内容处理">
+                          <span><strong>内容处理</strong><small>写作、整理与格式转换</small></span><i>✓</i>
+                        </button>
+                        <button class="select-option" type="button" role="option" aria-selected="false" data-value="数据分析">
+                          <span><strong>数据分析</strong><small>查询、洞察与报告生成</small></span><i>✓</i>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <label class="field error"><span>版本号</span><input type="text" value="1.4" aria-invalid="true" /><small>请输入完整的 SemVer</small></label>
+                </div>
+                <div class="switch-row">
+                  <span><strong>接收更新提醒</strong><small>出现新版本时显示一个小红点</small></span>
+                  <button class="switch active" type="button" role="switch" aria-checked="true"><span></span></button>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel">
+              <header class="panel-heading"><h3>标签与状态</h3><span>点击标签查看选中态</span></header>
+              <div class="component-block">
+                <div class="tag-row" aria-label="Skill 标签">
+                  <button class="tag selected" type="button" aria-pressed="true">代码审查</button>
+                  <button class="tag" type="button" aria-pressed="false">开发工具</button>
+                  <button class="tag" type="button" aria-pressed="false">安全</button>
+                  <button class="tag-add" type="button" aria-label="创建标签">＋</button>
+                </div>
+                <div class="status-row">
+                  <span class="status success"><i></i>已安装</span>
+                  <span class="status info"><i></i>有新版本</span>
+                  <span class="status warning"><i></i>本地已修改</span>
+                  <span class="status neutral"><i></i>已归档</span>
+                </div>
+                <div class="people-row">
+                  <span class="avatar">鸭</span>
+                  <span class="person-copy"><strong>鸭腿</strong><small>运营中心 · 运营办</small></span>
+                  <span class="avatar collaborator">林</span>
+                  <span class="avatar collaborator blue">陈</span>
+                  <small>协作者按姓名排序</small>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel">
+              <header class="panel-heading"><h3>反馈信息</h3><span>无需强提醒</span></header>
+              <div class="feedback-stack">
+                <div class="notice success"><span class="notice-icon">✓</span><div><strong>解析完成</strong><p>已识别 code-review，共包含 8 个文件。</p></div></div>
+                <div class="notice warning"><span class="notice-icon">!</span><div><strong>发现同名 Skill</strong><p>继续安装会替换本地目录，替换前会自动备份。</p></div></div>
+                <div class="notice danger"><span class="notice-icon">×</span><div><strong>无法读取压缩包</strong><p>ZIP 中没有找到有效的 SKILL.md。</p></div></div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-section" id="composition">
+          <header class="section-heading">
+            <div><span class="section-kicker">COMPOSITION</span><h2>组合示例</h2></div>
+            <p>组件组合后仍使用同一套密度、边框与反馈规则。</p>
+          </header>
+
+          <div class="composition-grid">
+            <article class="skill-card">
+              <div class="skill-identity">
+                <span class="skill-avatar blue">CR</span>
+                <span class="skill-copy"><strong>代码审查助手</strong><code>code-review</code><p>按照团队规范检查变更，输出可执行的审查意见。</p></span>
+              </div>
+              <footer><span class="owner-badge">@鸭腿</span><span class="download-badge">↓ 128</span><button class="icon-button primary" type="button" aria-label="安装代码审查助手" data-toast-trigger>＋</button></footer>
+            </article>
+
+            <article class="skill-card">
+              <div class="skill-identity">
+                <span class="skill-avatar purple">MN</span>
+                <span class="skill-copy"><strong>会议纪要整理</strong><code>meeting-notes</code><p>将会议记录整理为结论、待办和风险清单。</p></span>
+              </div>
+              <footer><span class="owner-badge">@林晓</span><span class="download-badge">↓ 96</span><button class="icon-button installed" type="button" aria-label="会议纪要整理已安装">✓</button></footer>
+            </article>
+
+            <article class="empty-state">
+              <div class="empty-canopy" aria-hidden="true"><span></span><span></span><span></span></div>
+              <strong>还没有安装 Skill</strong>
+              <p>从技能广场选择一个 Skill，安装后会显示在这里。</p>
+              <button class="button secondary" type="button">去浏览</button>
+            </article>
+
+            <article class="account-demo">
+              <header><span>账户菜单</span><small>点击用户区域展开</small></header>
+              <div class="account-stage">
+                <div class="account-menu" id="account-menu" hidden>
+                  <div class="account-summary"><span class="avatar">鸭</span><span><strong>鸭腿</strong><small>运营中心 · 运营办</small></span></div>
+                  <button type="button"><span>通知</span><i>3</i></button>
+                  <button class="logout" type="button">退出登录</button>
+                </div>
+                <button class="account-trigger" id="account-trigger" type="button" aria-expanded="false">
+                  <span class="avatar">鸭</span><span><strong>鸭腿</strong><small>运营中心 · 运营办</small></span><i class="unread-dot"></i>
+                </button>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <footer class="page-footer"><span>KOCOTREE UI · 软件界面探索稿</span><span>组件圆角 8px · 面板圆角 12px · 基础间距 4px</span></footer>
+      </main>
+
+      <div class="modal-layer" id="modal-layer" hidden>
+        <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+          <header><div><span class="eyebrow">操作确认</span><h2 id="modal-title">安装代码审查助手</h2></div><button class="modal-close" type="button" data-modal-close aria-label="关闭">×</button></header>
+          <div class="modal-body"><p>Skill 将安装到 <code>~/.agents/skills/code-review</code>，Codex 可以直接读取。</p><div class="notice warning"><span class="notice-icon">!</span><div><strong>本地存在同名目录</strong><p>强制安装前会保留一份备份。</p></div></div></div>
+          <footer><button class="button ghost" type="button" data-modal-close>取消</button><button class="button primary" id="confirm-install" type="button">确认安装</button></footer>
+        </section>
+      </div>
+
+      <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+        <span class="toast-icon">✓</span><span><strong>安装任务已创建</strong><small>代码审查助手正在准备中</small></span><button type="button" id="toast-close" aria-label="关闭">×</button>
+      </div>
+
+      <div class="tooltip" id="playground-tooltip" role="tooltip" hidden></div>
+    </div>
+    <script src="./app.js"></script>
+  </body>
+</html>
