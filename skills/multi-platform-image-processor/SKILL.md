@@ -21,7 +21,9 @@ uv run init.py
 - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
 
-初始化流程创建本 skill 的 `.venv`，在 macOS 上通过 Homebrew 安装 `pngquant` 所需的系统运行库，安装并初始化 `text2image`，验证 `pngquant` 实际执行，并完成飞书 OAuth 授权。出现授权链接时需在浏览器中完成授权；全部步骤通过后写入当前虚拟环境的初始化状态。
+初始化流程创建本 skill 的 `.venv`，在 macOS 上通过 Homebrew 安装 `pngquant` 所需的系统运行库，安装并初始化 `text2image`，验证 `pngquant` 实际执行，并将环境状态写入当前虚拟环境，最后检查飞书认证。
+
+首次认证会输出飞书授权链接并结束当前命令。完成浏览器授权后重新执行 `uv run init.py`，脚本获取并保存 token 后完成初始化。
 
 macOS 需要预先安装 Homebrew；初始化脚本仅在 `pngquant` 明确报告缺少 `little-cms2` 或 `libpng` 时安装对应运行库。
 
@@ -103,7 +105,7 @@ Windows 中文环境下如遇编码错误，先设置 `$env:PYTHONUTF8 = "1"`。
 ## 执行原则
 
 - 先产出天猫通用版，再派生其他平台，避免多处重复处理详情页。
-- 图片处理使用 `uv run init.py` 生成的环境状态；飞书 access token 过期时使用已有 refresh token 自动刷新。
+- 图片处理使用 `uv run init.py` 生成的环境状态；每次运行检查飞书认证，access token 过期时使用已有 refresh token 自动刷新。
 - 输入包检测未通过时必须停止，不得用非标准目录猜测或降级继续生成。
 - 输入包检测未通过时，最终答复必须包含报告提供的完整标准输入结构，帮助用户直接整理数据包。
 - 透明图脏点导致检测失败时，最终答复必须展示透明图问题汇总和对应单图诊断图，说明上方原图无覆盖、下方为定位与增强证据。

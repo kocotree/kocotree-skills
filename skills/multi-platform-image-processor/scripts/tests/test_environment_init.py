@@ -124,8 +124,8 @@ class EnvironmentInitializationTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "Homebrew"):
                 init_module.validate_pngquant()
 
-    def test_state_is_written_after_all_initialization_steps(self) -> None:
-        """验证工具和认证全部完成后写入初始化状态。"""
+    def test_state_is_written_before_authentication(self) -> None:
+        """验证工具环境状态在飞书认证前写入。"""
         with TemporaryDirectory() as temp_dir_value:
             temp_dir = Path(temp_dir_value)
             pngquant = temp_dir / "pngquant"
@@ -137,14 +137,40 @@ class EnvironmentInitializationTests(unittest.TestCase):
             ), patch(
                 "init.initialize_text2image",
                 return_value=(text2image, "完成"),
-            ), patch("init.initialize_token") as initialize_token, patch(
+            ), patch("init.ensure_token") as ensure_token, patch(
                 "init.save_environment_state",
                 return_value=state_path,
             ) as save_state:
                 result = init_module.initialize_environment()
 
             self.assertEqual(result, state_path)
-            initialize_token.assert_called_once_with()
+            ensure_token.assert_called_once_with()
+            save_state.assert_called_once_with(pngquant, text2image)
+
+    def test_state_is_written_when_authentication_hands_off(self) -> None:
+        """验证首次授权退出命令前已经写入工具环境状态。"""
+        with TemporaryDirectory() as temp_dir_value:
+            temp_dir = Path(temp_dir_value)
+            pngquant = temp_dir / "pngquant"
+            text2image = temp_dir / "text2image"
+            state_path = temp_dir / "environment.json"
+            with patch("init.validate_current_venv"), patch(
+                "init.validate_pngquant",
+                return_value=pngquant,
+            ), patch(
+                "init.initialize_text2image",
+                return_value=(text2image, "完成"),
+            ), patch(
+                "init.save_environment_state",
+                return_value=state_path,
+            ) as save_state, patch(
+                "init.ensure_token",
+                side_effect=SystemExit(0),
+            ):
+                with self.assertRaises(SystemExit) as raised:
+                    init_module.initialize_environment()
+
+            self.assertEqual(raised.exception.code, 0)
             save_state.assert_called_once_with(pngquant, text2image)
 
     def test_runtime_text2image_does_not_install_dependencies(self) -> None:
@@ -158,8 +184,8 @@ class EnvironmentInitializationTests(unittest.TestCase):
         self.assertIn("uv run init.py", message)
         download.assert_not_called()
 
-    def test_runtime_auth_does_not_start_first_authorization(self) -> None:
-        """验证运行期认证失效时不会发起首次授权。"""
+    def test_first_authentication_hands_control_back(self) -> None:
+        """验证首次认证保存待授权状态后立即结束当前命令。"""
         with patch.object(
             auth_client,
             "_is_access_token_expired",
@@ -168,11 +194,23 @@ class EnvironmentInitializationTests(unittest.TestCase):
             auth_client,
             "_is_refresh_token_expired",
             return_value=True,
-        ), patch.object(auth_client, "_get_auth_url") as get_auth_url:
-            with self.assertRaisesRegex(RuntimeError, "uv run init.py"):
-                auth_client.ensure_existing_token()
+        ), patch.object(
+            auth_client,
+            "_load_pending",
+            return_value=None,
+        ), patch.object(
+            auth_client,
+            "_get_auth_url",
+            return_value=("https://example.com/authorize", "state"),
+        ), patch.object(auth_client, "_save_pending") as save_pending:
+            with self.assertRaises(SystemExit) as raised:
+                auth_client.ensure_token()
 
-        get_auth_url.assert_not_called()
+        self.assertEqual(raised.exception.code, 0)
+        save_pending.assert_called_once_with(
+            "state",
+            "https://example.com/authorize",
+        )
 
 
 if __name__ == "__main__":

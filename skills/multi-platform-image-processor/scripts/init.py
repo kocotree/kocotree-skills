@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from auth.auth_client import initialize_token
+from auth.auth_client import ensure_token
 from common.environment import save_environment_state
 from common.image_resize_compress import find_pngquant
 from common.text_removal import initialize_text2image
@@ -122,8 +122,8 @@ def validate_pngquant() -> Path:
 def initialize_environment() -> Path:
     """初始化图片处理所需的本地环境和飞书认证。
 
-    功能说明：依次验证当前 `.venv`、pngquant、text2image 和飞书认证，
-    全部成功后保存初始化状态。
+    功能说明：依次验证当前 `.venv`、pngquant 和 text2image，保存环境
+    状态后执行飞书认证。
     返回值：
         初始化成功后写入的环境状态文件路径。
     """
@@ -139,10 +139,11 @@ def initialize_environment() -> Path:
         raise RuntimeError(message)
     logger.info("text2image初始化完成：%s", text2image)
 
-    initialize_token()
-    logger.info("飞书认证初始化完成")
-
     state_path = save_environment_state(pngquant, text2image)
+    logger.info("环境状态写入完成：%s", state_path)
+
+    ensure_token()
+    logger.info("飞书认证检查完成")
     logger.info("环境初始化完成：%s", state_path)
     return state_path
 

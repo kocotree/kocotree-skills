@@ -6,7 +6,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from auth.auth_client import ensure_existing_token
+from auth.auth_client import ensure_token
 from common import (
     全部平台,
     平台目录名,
@@ -289,7 +289,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     try:
         configure_runtime_environment()
-        ensure_existing_token()
+        ensure_token()
     except RuntimeError as e:
         print(f"启动失败：{e}")
         return 1

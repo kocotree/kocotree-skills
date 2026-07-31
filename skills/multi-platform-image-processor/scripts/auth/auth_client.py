@@ -1,18 +1,27 @@
-"""Skill 客户端：飞书 OAuth 初始化、token 管理和自动刷新。
+"""Skill 客户端：飞书 OAuth 认证，管理本地 token，自动刷新。
 
 使用方式：
-    初始化脚本调用 initialize_token 完成首次授权。
-    图片处理流程调用 ensure_existing_token 验证或刷新已有 token。
+    from auth_client import with_auth, get_headers
 
-    @with_auth 装饰的请求使用已有 token，收到 401 时刷新并重试。
+    @with_auth
+    def fetch_data():
+        return requests.get("http://other-service/api/data", headers=get_headers())
+
+    result = fetch_data()
+    # 首次（无 token）：
+    #   第 1 次调用 → 打印授权链接 → 脚本退出
+    #   用户完成浏览器授权后
+    #   第 2 次调用 → 自动轮询获取 token → 保存 → 继续业务逻辑
+    # 后续：直接带 token 请求，过期自动刷新
 
 环境变量：
-    AUTH_SERVICE_URL  auth 服务地址
+    AUTH_SERVICE_URL  auth 服务地址，默认 http://localhost:5050
     AUTH_TOKEN_PATH   本地 token 存储路径，默认 ~/.kocotree-skills/auth.json
 """
 
 import json
 import os
+import sys
 import time
 from functools import wraps
 from pathlib import Path
@@ -117,10 +126,10 @@ def _get_auth_url():
     return result["data"]["authorize_url"], result["data"]["state"]
 
 
-def _poll_token(state, timeout=POLL_TIMEOUT):
+def _poll_token(state):
     """轮询 auth 服务等待用户完成授权，成功后保存 token。"""
     start = time.time()
-    while time.time() - start < timeout:
+    while time.time() - start < POLL_TIMEOUT:
         time.sleep(POLL_INTERVAL)
         try:
             resp = requests.get(
@@ -133,66 +142,45 @@ def _poll_token(state, timeout=POLL_TIMEOUT):
                 _save_token(result["data"])
                 print("授权成功。", flush=True)
                 return True
-        except (requests.RequestException, ValueError, KeyError):
+        except requests.RequestException:
             pass
     return False
 
 
-def initialize_token() -> None:
-    """在初始化流程中完成飞书授权并保存 token。
+def ensure_token():
+    """确保本地有有效的 access_token。
 
-    功能说明：复用有效 token 或 refresh token；需要首次授权时展示链接并
-    等待用户完成飞书 OAuth。
-    返回值：
-        无返回值。
+    状态机：
+      有效 token       → 直接返回
+      可刷新           → 刷新后返回
+      有 pending       → 轮询服务端，成功返回，超时则清除 pending 抛异常
+      无 token 无 pending → 发起授权，保存 pending，打印链接，退出脚本
     """
     if not _is_access_token_expired():
         return
-    try:
-        if not _is_refresh_token_expired() and _refresh():
+
+    if not _is_refresh_token_expired():
+        if _refresh():
             return
 
-        pending = _load_pending()
-        if pending:
-            authorize_url = pending["authorize_url"]
-            state = pending["state"]
-        else:
-            authorize_url, state = _get_auth_url()
-            _save_pending(state, authorize_url)
-    except (requests.RequestException, ValueError, KeyError) as exc:
-        raise RuntimeError(f"飞书认证服务调用失败：{exc}") from exc
-
-    print(f"请在浏览器中打开以下链接完成飞书授权：\n{authorize_url}", flush=True)
-    print("正在等待授权结果……", flush=True)
-    if _poll_token(state, PENDING_EXPIRE):
+    pending = _load_pending()
+    if pending:
+        if _poll_token(pending["state"]):
+            _clear_pending()
+            return
         _clear_pending()
-        return
-    _clear_pending()
-    raise RuntimeError("飞书授权超时，请重新执行 uv run init.py")
+        raise RuntimeError("授权超时，请重新发起。")
 
-
-def ensure_existing_token(force_refresh: bool = False) -> None:
-    """验证或刷新初始化流程保存的飞书 token。
-
-    功能说明：运行期只使用已有 token，认证失效时提示重新执行初始化。
-    参数：
-        force_refresh：是否忽略 access token 到期时间并强制刷新。
-    返回值：
-        无返回值。
-    """
-    if not force_refresh and not _is_access_token_expired():
-        return
-    try:
-        if not _is_refresh_token_expired() and _refresh():
-            return
-    except (requests.RequestException, ValueError, KeyError) as exc:
-        raise RuntimeError(f"飞书 token 刷新失败：{exc}") from exc
-    raise RuntimeError("飞书认证已失效，请在 scripts 目录重新执行：uv run init.py")
+    authorize_url, state = _get_auth_url()
+    _save_pending(state, authorize_url)
+    print(f"请在浏览器中打开以下链接完成飞书授权：\n{authorize_url}", flush=True)
+    print("完成授权后，请重新运行此脚本。", flush=True)
+    sys.exit(0)
 
 
 def get_headers():
     """返回带 Authorization 的 headers dict。"""
-    ensure_existing_token()
+    ensure_token()
     data = _load_token()
     if data and data.get("access_token"):
         return {"Authorization": f"Bearer {data['access_token']}"}
@@ -203,7 +191,7 @@ def with_auth(f):
     """装饰器：确保 token 有效后执行，401 时自动刷新重试。"""
     @wraps(f)
     def decorated(*args, **kwargs):
-        ensure_existing_token()
+        ensure_token()
         resp = f(*args, **kwargs)
         try:
             data = resp.json()
@@ -212,7 +200,7 @@ def with_auth(f):
         if resp.status_code == 401 or data.get("code") == 401:
             global _token_cache
             _token_cache = None
-            ensure_existing_token(force_refresh=True)
+            ensure_token()
             resp = f(*args, **kwargs)
         return resp
 
