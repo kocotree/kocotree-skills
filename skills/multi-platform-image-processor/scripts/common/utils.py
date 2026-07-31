@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import shutil
 from datetime import datetime
@@ -9,6 +10,8 @@ from typing import Any
 
 from PIL import Image
 
+
+logger = logging.getLogger(__name__)
 
 图片后缀 = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 
@@ -95,6 +98,8 @@ def new_report(source: Path, template: Path | None, output: Path, platform: str)
         "素材扫描": {},
         "平台结果": {},
         "图片记录": [],
+        "图片统计": {},
+        "追溯文件": {},
         "Agent复核建议": [],
         "警告": [],
         "风险": [],
@@ -168,15 +173,30 @@ def add_image_record(
     actions: list[str] | None = None,
 ) -> None:
     info = image_info(output) if output.exists() else {}
-    report["图片记录"].append(
-        {
-            "平台": platform,
-            "用途": usage,
-            "源文件": str(source) if source else "",
-            "输出文件": str(output),
-            "处理动作": actions or [],
-            **info,
-        }
+    record = {
+        "平台": platform,
+        "用途": usage,
+        "源文件": str(source) if source else "",
+        "输出文件": str(output),
+        "处理动作": actions or [],
+        "处理结果": "成功",
+        **info,
+    }
+    report["图片记录"].append(record)
+    logger.info(
+        "图片处理完成 source=%r output=%r size=%r format=%s size_kb=%s actions=%r",
+        record["源文件"],
+        record["输出文件"],
+        record.get("尺寸", []),
+        record.get("格式", ""),
+        record.get("大小KB", 0),
+        record["处理动作"],
+        extra={
+            "platform": platform,
+            "stage": "图片处理",
+            "event": "图片完成",
+            "status": "success",
+        },
     )
 
 
@@ -224,18 +244,37 @@ def write_json(path: Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def finalize_report_summary(report: dict[str, Any]) -> None:
-    report["处理配置"]["结束时间"] = datetime.now().isoformat(timespec="seconds")
+def build_image_statistics(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """统计逐图明细中的平台和用途数量。
 
-    raw_records = report.get("图片记录", [])
-    total_images = len(raw_records)
-    grouped: dict[str, dict[str, int]] = {}
-    for rec in raw_records:
-        plat = rec.get("平台", "未知")
-        usage = rec.get("用途", "未知")
-        grouped.setdefault(plat, {})
-        grouped[plat][usage] = grouped[plat].get(usage, 0) + 1
-    report["图片记录"] = grouped
+    参数：
+        records：本次运行产生的逐图处理记录。
+    返回值：
+        包含图片总数及各平台用途数量的精简统计。
+    """
+    platforms: dict[str, dict[str, Any]] = {}
+    for record in records:
+        platform = record.get("平台", "未知")
+        usage = record.get("用途", "未知")
+        platform_statistics = platforms.setdefault(platform, {"总数": 0, "按用途": {}})
+        platform_statistics["总数"] += 1
+        usages = platform_statistics["按用途"]
+        usages[usage] = usages.get(usage, 0) + 1
+    return {"总数": len(records), "按平台": platforms}
+
+
+def finalize_report_summary(report: dict[str, Any], total_images: int | None = None) -> None:
+    """补充主报告的结束时间和汇总计数。
+
+    参数：
+        report：需要写出的精简主报告。
+        total_images：逐图明细总数；未提供时读取图片统计中的总数。
+    返回值：
+        无返回值。
+    """
+    report["处理配置"]["结束时间"] = datetime.now().isoformat(timespec="seconds")
+    if total_images is None:
+        total_images = int(report.get("图片统计", {}).get("总数", 0))
 
     report["汇总"] = {
         "平台数": len(report.get("平台结果", {})),

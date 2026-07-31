@@ -127,6 +127,10 @@ class SourcePackValidatorTests(unittest.TestCase):
             report = json.loads(report_path.read_text(encoding="utf-8"))
             self.assertFalse(report["输入包检测"]["通过"])
             self.assertTrue(report["失败项"])
+            self.assertNotIn("图片记录", report)
+            self.assertEqual(report["图片统计"]["总数"], 0)
+            self.assertTrue(Path(report["追溯文件"]["运行日志"]).exists())
+            self.assertTrue(Path(report["追溯文件"]["逐图明细"]).exists())
             self.assertIn("标准输入结构", report["输入包检测"])
             self.assertIn("└─ 数据包/", report["输入包检测"]["标准输入结构"])
 

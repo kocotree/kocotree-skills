@@ -19,6 +19,13 @@ from common import (
     ensure_dir,
 )
 from common.quality_audit import run_quality_audit
+from common.run_logging import (
+    close_run_file_logging,
+    configure_run_file_logging,
+    default_run_log_path,
+    prune_run_logs,
+    report_artifact_prefix,
+)
 from common.scan_source_pack import scan_source_pack
 from common.source_pack_validator import validate_source_pack
 from common.write_report import write_report
@@ -59,7 +66,11 @@ def prune_report_files(report_dir: Path, keep: int = 100) -> None:
         reverse=True,
     )
     for old_report in reports[keep:]:
+        detail_path = old_report.with_name(
+            f"{report_artifact_prefix(old_report)}-image-records.jsonl"
+        )
         old_report.unlink(missing_ok=True)
+        detail_path.unlink(missing_ok=True)
 
 
 def default_template_path() -> Path:
@@ -102,20 +113,64 @@ def run_single(
     platform: str,
     report_path: Path | None = None,
 ) -> int:
+    """处理单个产品并生成平台图片、主报告、逐图明细和运行日志。
+
+    参数：
+        source_arg：用户传入的数据包目录或产品目录。
+        template：平台目录模板路径。
+        output_arg：所有产品共用的输出根目录。
+        platform：需要处理的平台参数。
+        report_path：可选的主报告路径。
+    返回值：
+        0 表示成功，1 表示存在处理失败项，2 表示输入包检测失败。
+    """
     source, output, product_name = resolve_source_and_output(source_arg, output_arg)
     if report_path is None:
         report_path = default_report_path(output)
 
+    run_id = report_artifact_prefix(report_path)
+    display_product = product_name or source.parent.name or source.name
+    log_path = configure_run_file_logging(
+        default_run_log_path(report_path),
+        run_id,
+        display_product,
+    )
     report = new_report(source, template, output, platform)
+    report["处理配置"]["运行ID"] = run_id
+    report["追溯文件"]["运行日志"] = str(log_path)
     if product_name:
         report["处理配置"]["产品名"] = product_name
         report["处理配置"]["源参数目录"] = str(source_arg)
         report["处理配置"]["输出根目录"] = str(output_arg)
+    logger = logging.getLogger(__name__)
+    logger.info(
+        "任务开始 source=%r output=%r platform=%s report=%r",
+        str(source),
+        str(output),
+        platform,
+        str(report_path),
+        extra={
+            "stage": "主流程",
+            "event": "任务开始",
+            "status": "running",
+        },
+    )
 
     if not source.exists():
         add_failure(report, "源数据包目录不存在", 源目录=str(source))
         write_report(report, report_path)
         prune_report_files(report_path.parent)
+        logger.error(
+            "任务结束：源数据包目录不存在 source=%r",
+            str(source),
+            extra={
+                "stage": "主流程",
+                "event": "任务结束",
+                "status": "failed",
+            },
+        )
+        prune_run_logs(log_path.parent)
+        close_run_file_logging()
         return 2
 
     validation_assets_dir = report_path.parent / f"{report_path.stem}-assets" / "透明图问题"
@@ -151,6 +206,17 @@ def run_single(
         for diagnostic_path in validation.get("透明图诊断图", []):
             print(f"透明图诊断图：{diagnostic_path}")
         print(f"报告路径：{report_path}")
+        logger.error(
+            "任务结束：输入包检测失败 problem_count=%d",
+            len(validation["问题"]),
+            extra={
+                "stage": "主流程",
+                "event": "任务结束",
+                "status": "failed",
+            },
+        )
+        prune_run_logs(log_path.parent)
+        close_run_file_logging()
         return 2
 
     ensure_dir(output)
@@ -194,7 +260,21 @@ def run_single(
     prune_report_files(report_path.parent)
     print(f"处理完成：{output}")
     print(f"报告路径：{report_path}")
-    return 0 if not report["失败项"] else 1
+    exit_code = 0 if not report["失败项"] else 1
+    logger.info(
+        "任务结束 output=%r report=%r failure_count=%d",
+        str(output),
+        str(report_path),
+        len(report["失败项"]),
+        extra={
+            "stage": "主流程",
+            "event": "任务结束",
+            "status": "success" if exit_code == 0 else "failed",
+        },
+    )
+    prune_run_logs(log_path.parent)
+    close_run_file_logging()
+    return exit_code
 
 
 def main(argv: list[str] | None = None) -> int:
