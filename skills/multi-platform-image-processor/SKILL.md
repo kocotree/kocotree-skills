@@ -2,7 +2,7 @@
 name: multi-platform-image-processor
 description: 全自动处理商品图片数据包并输出面向多平台规格的图片包。用于天猫通用版、京东、CBME、唯品会、蜂享家＋爱库存、站外通用版的主图、SKU、白底图、透明图、详情页、素材图分类、缩放、压缩、去字、透明裁边、切片、质检和报告生成。
 metadata:
-  version: "1.0.1"
+  version: "1.1.0"
 ---
 
 # 多平台图片处理
