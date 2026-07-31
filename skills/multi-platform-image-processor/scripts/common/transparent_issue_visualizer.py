@@ -13,20 +13,22 @@ def render_transparent_issue(
     image_path: Path,
     rgba: Image.Image,
     alpha: Image.Image,
-    debris: list[dict[str, Any]],
+    regions: list[dict[str, Any]],
     output_dir: Path,
+    alpha_threshold: int = 8,
 ) -> Path:
-    """生成单张透明图脏点诊断图。
+    """生成单张透明图独立区域诊断图。
 
     功能说明：在棋盘背景上无覆盖展示原透明图，并在下方使用空心定位框和
-    独立透明度证据图展示主体外残留，避免诊断标记遮挡原图内容。
+    独立透明度证据图展示待检查区域，避免诊断标记遮挡原图内容。
 
     参数：
         image_path：原透明图路径，用于标题和输出命名。
         rgba：原透明图的 RGBA 图像。
         alpha：原透明图的透明通道。
-        debris：主体外独立连通区域信息。
+        regions：需要展示的独立连通区域信息。
         output_dir：诊断图片输出目录。
+        alpha_threshold：收集区域像素时使用的可见透明度阈值。
     返回值：
         生成的 PNG 诊断图路径。
     """
@@ -39,18 +41,18 @@ def render_transparent_issue(
     draw = ImageDraw.Draw(panel)
     title_font = _load_font(max(22, round(width * 0.035)), bold=True)
     text_font = _load_font(max(16, round(width * 0.024)))
-    debris_pixels = []
+    region_pixels = []
     boxes = []
-    for item in debris:
-        pixels = _collect_component_pixels(alpha, item["起点"])
-        debris_pixels.extend(pixels)
+    for item in regions:
+        pixels = _collect_component_pixels(alpha, item["起点"], alpha_threshold)
+        region_pixels.extend(pixels)
         boxes.append(tuple(item["边界"]))
 
-    total_pixels = sum(item["像素数"] for item in debris)
-    draw.text((16, 10), f"{image_path.name} 透明图脏点诊断", font=title_font, fill=(0, 0, 0))
+    total_pixels = sum(item["像素数"] for item in regions)
+    draw.text((16, 10), f"{image_path.name} 透明图独立区域诊断", font=title_font, fill=(0, 0, 0))
     draw.text(
         (16, 48),
-        f"主体外独立区域：{len(debris)} 个；残留像素：{total_pixels} 个。上方原图无任何覆盖。",
+        f"待检查独立区域：{len(regions)} 个；区域像素：{total_pixels} 个。上方原图无任何覆盖。",
         font=text_font,
         fill=(20, 90, 120),
     )
@@ -71,7 +73,7 @@ def render_transparent_issue(
         (half_width, zoom_height),
         background=(245, 245, 245),
     )
-    evidence = _debris_evidence(rgba.size, debris_pixels).crop(crop_box)
+    evidence = _debris_evidence(rgba.size, region_pixels).crop(crop_box)
     right_panel, right_ratio, right_offset = _fit_contain_with_mapping(
         evidence,
         (width - half_width, zoom_height),
@@ -87,7 +89,7 @@ def render_transparent_issue(
         width=2,
     )
 
-    output_path = unique_path(output_dir / f"{image_path.stem}-透明图脏点诊断.png")
+    output_path = unique_path(output_dir / f"{image_path.stem}-透明图独立区域诊断.png")
     panel.save(output_path, format="PNG", optimize=True)
     return output_path
 
@@ -116,12 +118,16 @@ def render_transparent_overview(diagnostic_paths: list[Path], output_dir: Path) 
     canvas = Image.new("RGB", (target_width * len(resized), max_height), (238, 238, 238))
     for index, panel in enumerate(resized):
         canvas.paste(panel, (index * target_width, 0))
-    output_path = unique_path(ensure_dir(output_dir) / "透明图脏点诊断汇总.png")
+    output_path = unique_path(ensure_dir(output_dir) / "透明图独立区域诊断汇总.png")
     canvas.save(output_path, format="PNG", optimize=True)
     return output_path
 
 
-def _collect_component_pixels(alpha: Image.Image, start: list[int]) -> list[tuple[int, int]]:
+def _collect_component_pixels(
+    alpha: Image.Image,
+    start: list[int],
+    threshold: int,
+) -> list[tuple[int, int]]:
     width, height = alpha.size
     values = alpha.tobytes()
     start_index = start[1] * width + start[0]
@@ -137,7 +143,7 @@ def _collect_component_pixels(alpha: Image.Image, start: list[int]) -> list[tupl
             base = neighbor_y * width
             for neighbor_x in range(max(0, x - 1), min(width, x + 2)):
                 neighbor = base + neighbor_x
-                if values[neighbor] > 0 and neighbor not in seen:
+                if values[neighbor] > threshold and neighbor not in seen:
                     seen.add(neighbor)
                     queue.append(neighbor)
     return pixels
