@@ -21,7 +21,9 @@ uv run init.py
 - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
 
-初始化流程创建本 skill 的 `.venv`，安装并初始化 `text2image`，验证 `pngquant` 实际执行，并完成飞书 OAuth 授权。出现授权链接时需在浏览器中完成授权；全部步骤通过后写入当前虚拟环境的初始化状态。
+初始化流程创建本 skill 的 `.venv`，在 macOS 上通过 Homebrew 安装 `pngquant` 所需的系统运行库，安装并初始化 `text2image`，验证 `pngquant` 实际执行，并完成飞书 OAuth 授权。出现授权链接时需在浏览器中完成授权；全部步骤通过后写入当前虚拟环境的初始化状态。
+
+macOS 需要预先安装 Homebrew；初始化脚本仅在 `pngquant` 明确报告缺少 `little-cms2` 或 `libpng` 时安装对应运行库。
 
 初始化完成后，使用 `.venv` 中的 Python 执行图片处理脚本。
 
@@ -69,7 +71,7 @@ Windows 中文环境下如遇编码错误，先设置 `$env:PYTHONUTF8 = "1"`。
 ## 脚本职责
 
 - `scripts/main.py`：总入口，调度扫描、母版生成、平台派生、质检、报告。
-- `scripts/init.py`：初始化虚拟环境后的工具依赖、`text2image` 和飞书认证。
+- `scripts/init.py`：初始化虚拟环境后的系统运行库、工具依赖、`text2image` 和飞书认证。
 - `scripts/common/`：通用工具模块。
   - `environment.py`：保存和加载当前虚拟环境的初始化状态。
   - `utils.py`：路径、图片信息、报告管理等基础工具。
