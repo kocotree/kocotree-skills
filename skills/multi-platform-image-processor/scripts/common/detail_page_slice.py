@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 from pathlib import Path
 
@@ -9,13 +10,80 @@ from .utils import list_images, ensure_dir, add_failure, add_risk, add_warning
 from .image_resize_compress import open_image, save_jpg_under
 
 
+logger = logging.getLogger(__name__)
+
+
 def collect_detail_sources(source_root: Path) -> list[Path]:
+    """按已验证的详情页结构收集源图片。
+
+    功能说明：平铺模式读取静态目录中的直接图片；上/下模式按“上”后
+    “下”的顺序合并图片。混合或不完整结构会直接报错。
+
+    参数：
+        source_root：数据包根目录。
+    返回值：
+        按详情页展示顺序排列的源图片路径。
+    """
     static = source_root / "详情" / "静态"
     upper = static / "上"
     lower = static / "下"
-    if upper.exists() or lower.exists():
-        return list_images(upper) + list_images(lower)
-    return list_images(static)
+    direct_images = list_images(static)
+    upper_exists = upper.is_dir()
+    lower_exists = lower.is_dir()
+
+    if direct_images and (upper_exists or lower_exists):
+        logger.error(
+            "详情页源图片收集失败：平铺与上/下结构混用 root=%r",
+            str(static),
+            extra={
+                "stage": "详情页",
+                "event": "详情源图收集",
+                "status": "failed",
+            },
+        )
+        raise ValueError("详情页平铺图片不能与上/下目录同时存在")
+
+    if direct_images:
+        logger.info(
+            "详情页源图片收集完成 mode=flat count=%d",
+            len(direct_images),
+            extra={
+                "stage": "详情页",
+                "event": "详情源图收集",
+                "status": "success",
+            },
+        )
+        return direct_images
+
+    upper_images = list_images(upper) if upper_exists else []
+    lower_images = list_images(lower) if lower_exists else []
+    if upper_exists and lower_exists and upper_images and lower_images:
+        sources = upper_images + lower_images
+        logger.info(
+            "详情页源图片收集完成 mode=upper-lower upper_count=%d lower_count=%d total=%d",
+            len(upper_images),
+            len(lower_images),
+            len(sources),
+            extra={
+                "stage": "详情页",
+                "event": "详情源图收集",
+                "status": "success",
+            },
+        )
+        return sources
+
+    logger.error(
+        "详情页源图片收集失败：上/下结构不完整 root=%r upper_count=%d lower_count=%d",
+        str(static),
+        len(upper_images),
+        len(lower_images),
+        extra={
+            "stage": "详情页",
+            "event": "详情源图收集",
+            "status": "failed",
+        },
+    )
+    raise ValueError("详情页必须使用平铺结构或完整且非空的上/下结构")
 
 
 def generate_sequential_detail_pages(

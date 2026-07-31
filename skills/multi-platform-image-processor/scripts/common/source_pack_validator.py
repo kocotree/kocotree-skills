@@ -65,7 +65,24 @@ logger = logging.getLogger(__name__)
       ├─ 图片.jpg
       ├─ 子目录/
       │  └─ 图片.jpg
-      └─ ..."""
+      └─ ...
+
+详情页结构二选一，禁止混用：
+
+方案一：平铺结构
+详情/静态/
+├─ 1.jpg
+├─ 2.jpg
+└─ ...
+
+方案二：上/下结构
+详情/静态/
+├─ 上/
+│  ├─ 1.jpg
+│  └─ ...
+└─ 下/
+   ├─ 1.jpg
+   └─ ..."""
 
 
 def validate_source_pack(
@@ -199,26 +216,157 @@ def _check_detail_directory(
     problems: list[dict[str, Any]],
     recognized: dict[str, dict[str, Any]],
 ) -> None:
+    """检查详情页是否使用唯一且完整的标准结构。
+
+    功能说明：详情页可使用静态目录平铺图片，或使用非空的“上/下”
+    两个子目录；两种结构互斥。
+
+    参数：
+        source_root：待检测的数据包根目录。
+        problems：用于追加结构问题的列表。
+        recognized：用于记录实际识别目录和详情模式的字典。
+    返回值：
+        无返回值。
+    """
     static_root = resolve_source_path(source_root, "详情静态")
     if not static_root.is_dir():
         _add_problem(problems, "缺少必需目录：详情\\静态", static_root)
         return
 
+    upper_path = resolve_source_path(source_root, "详情上")
+    lower_path = resolve_source_path(source_root, "详情下")
+    invalid_nodes = [
+        path for path in (upper_path, lower_path)
+        if path.exists() and not path.is_dir()
+    ]
+    if invalid_nodes:
+        recognized["详情静态"] = {
+            "目录": str(static_root),
+            "模式": "无效",
+            "直接图片数量": len(list_images(static_root)),
+            "上部图片数量": 0,
+            "下部图片数量": 0,
+        }
+        for path in invalid_nodes:
+            _add_problem(
+                problems,
+                f"详情页结构无效：{_display_path(source_root, path)} 必须是目录",
+                path,
+            )
+        logger.warning(
+            "详情页结构检测失败：上/下节点不是目录 paths=%r",
+            [str(path) for path in invalid_nodes],
+            extra={
+                "stage": "输入检测",
+                "event": "详情结构检测",
+                "status": "failed",
+            },
+        )
+        return
+
     direct_images = list_images(static_root)
-    upper_images = list_images(resolve_source_path(source_root, "详情上"))
-    lower_images = list_images(resolve_source_path(source_root, "详情下"))
+    upper_exists = upper_path.is_dir()
+    lower_exists = lower_path.is_dir()
+    upper_images = list_images(upper_path) if upper_exists else []
+    lower_images = list_images(lower_path) if lower_exists else []
     recognized["详情静态"] = {
         "目录": str(static_root),
+        "模式": "未识别",
         "直接图片数量": len(direct_images),
         "上部图片数量": len(upper_images),
         "下部图片数量": len(lower_images),
     }
-    if direct_images or (upper_images and lower_images):
+
+    if direct_images and not upper_exists and not lower_exists:
+        recognized["详情静态"]["模式"] = "平铺"
+        logger.info(
+            "详情页结构检测通过 mode=flat direct_count=%d",
+            len(direct_images),
+            extra={
+                "stage": "输入检测",
+                "event": "详情结构检测",
+                "status": "success",
+            },
+        )
         return
-    _add_problem(
-        problems,
-        "详情页结构无效：请在详情\\静态直接放图片，或同时提供详情\\静态\\上和详情\\静态\\下",
-        static_root,
+
+    if direct_images and (upper_exists or lower_exists):
+        recognized["详情静态"]["模式"] = "混合结构"
+        _add_problem(
+            problems,
+            "详情页结构混用：平铺图片不能与详情\\静态\\上或详情\\静态\\下同时存在",
+            static_root,
+            "保留平铺图片，或移除平铺图片并同时提供非空的上、下目录",
+        )
+        logger.warning(
+            "详情页结构检测失败：平铺与上/下结构混用 direct_count=%d upper_count=%d lower_count=%d",
+            len(direct_images),
+            len(upper_images),
+            len(lower_images),
+            extra={
+                "stage": "输入检测",
+                "event": "详情结构检测",
+                "status": "failed",
+            },
+        )
+        return
+
+    if not upper_exists or not lower_exists:
+        recognized["详情静态"]["模式"] = "上/下结构不完整"
+        missing = [
+            name for name, exists in (("上", upper_exists), ("下", lower_exists))
+            if not exists
+        ]
+        _add_problem(
+            problems,
+            f"详情页上/下结构不完整：缺少目录 {', '.join(missing)}",
+            static_root,
+            "同时创建详情\\静态\\上和详情\\静态\\下，并在两个目录中分别放入图片",
+        )
+        logger.warning(
+            "详情页结构检测失败：缺少上/下目录 missing=%r",
+            missing,
+            extra={
+                "stage": "输入检测",
+                "event": "详情结构检测",
+                "status": "failed",
+            },
+        )
+        return
+
+    if not upper_images or not lower_images:
+        recognized["详情静态"]["模式"] = "上/下结构不完整"
+        empty = [
+            name for name, images in (("上", upper_images), ("下", lower_images))
+            if not images
+        ]
+        _add_problem(
+            problems,
+            f"详情页上/下目录必须分别包含图片：空目录 {', '.join(empty)}",
+            static_root,
+            "在详情\\静态\\上和详情\\静态\\下中分别放入图片",
+        )
+        logger.warning(
+            "详情页结构检测失败：上/下目录为空 empty=%r",
+            empty,
+            extra={
+                "stage": "输入检测",
+                "event": "详情结构检测",
+                "status": "failed",
+            },
+        )
+        return
+
+    recognized["详情静态"]["模式"] = "上/下"
+    logger.info(
+        "详情页结构检测通过 mode=upper-lower upper_count=%d lower_count=%d",
+        len(upper_images),
+        len(lower_images),
+        extra={
+            "stage": "输入检测",
+            "event": "详情结构检测",
+            "status": "success",
+        },
     )
 
 

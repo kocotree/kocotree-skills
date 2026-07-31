@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 
 from PIL import Image, ImageDraw
 
+from common.detail_page_slice import collect_detail_sources
 from common.source_pack_validator import validate_source_pack
 from main import run_single
 
@@ -104,6 +105,68 @@ class SourcePackValidatorTests(unittest.TestCase):
 
             self.assertFalse(result["通过"])
             self.assertTrue(any("必需目录没有图片" in item["信息"] for item in result["问题"]))
+
+    def test_flat_detail_mode_is_accepted_and_collected(self) -> None:
+        """验证平铺详情结构通过检测并完整收集直接图片。"""
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "数据包"
+            create_standard_pack(root)
+            create_rgb(root / "详情" / "静态" / "2.jpg")
+
+            result = validate_source_pack(root)
+            sources = collect_detail_sources(root)
+
+            self.assertTrue(result["通过"])
+            self.assertEqual(result["识别目录"]["详情静态"]["模式"], "平铺")
+            self.assertEqual([path.name for path in sources], ["1.jpg", "2.jpg"])
+
+    def test_complete_upper_lower_detail_mode_is_accepted_and_ordered(self) -> None:
+        """验证完整上/下详情结构通过检测并保持先上后下顺序。"""
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "数据包"
+            create_standard_pack(root)
+            (root / "详情" / "静态" / "1.jpg").unlink()
+            create_rgb(root / "详情" / "静态" / "上" / "上-1.jpg")
+            create_rgb(root / "详情" / "静态" / "下" / "下-1.jpg")
+
+            result = validate_source_pack(root)
+            sources = collect_detail_sources(root)
+
+            self.assertTrue(result["通过"])
+            self.assertEqual(result["识别目录"]["详情静态"]["模式"], "上/下")
+            self.assertEqual([path.name for path in sources], ["上-1.jpg", "下-1.jpg"])
+
+    def test_mixed_detail_mode_is_rejected(self) -> None:
+        """验证平铺图片与上/下目录混用时立即失败。"""
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "数据包"
+            create_standard_pack(root)
+            create_rgb(root / "详情" / "静态" / "上" / "上-1.jpg")
+
+            result = validate_source_pack(root)
+
+            self.assertFalse(result["通过"])
+            self.assertEqual(result["识别目录"]["详情静态"]["模式"], "混合结构")
+            self.assertTrue(any("详情页结构混用" in item["信息"] for item in result["问题"]))
+            with self.assertRaisesRegex(ValueError, "平铺图片不能与上/下目录同时存在"):
+                collect_detail_sources(root)
+
+    def test_upper_lower_detail_mode_requires_both_non_empty(self) -> None:
+        """验证上/下模式的两个目录必须同时存在且分别包含图片。"""
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "数据包"
+            create_standard_pack(root)
+            (root / "详情" / "静态" / "1.jpg").unlink()
+            create_rgb(root / "详情" / "静态" / "上" / "上-1.jpg")
+            (root / "详情" / "静态" / "下").mkdir(parents=True)
+
+            result = validate_source_pack(root)
+
+            self.assertFalse(result["通过"])
+            self.assertEqual(result["识别目录"]["详情静态"]["模式"], "上/下结构不完整")
+            self.assertTrue(
+                any("上/下目录必须分别包含图片" in item["信息"] for item in result["问题"])
+            )
 
     def test_main_flow_stops_before_creating_platform_output(self) -> None:
         with TemporaryDirectory() as temp_dir:
