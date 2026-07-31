@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 
 from PIL import Image
 
+from main import parse_args
 from common.run_logging import close_run_file_logging, configure_run_file_logging
 from common.utils import add_image_record, new_report
 from common.write_report import image_records_path, write_report
@@ -19,6 +20,13 @@ class ReportOutputsTests(unittest.TestCase):
     def tearDown(self) -> None:
         """关闭测试创建的运行日志处理器。"""
         close_run_file_logging()
+
+    def test_cli_keeps_output_and_uses_automatic_report_path(self) -> None:
+        """验证命令行支持成品目录且不提供报告路径参数。"""
+        args = parse_args(["--source", "源数据包", "--output", "成品目录"])
+
+        self.assertEqual(args.output, "成品目录")
+        self.assertFalse(hasattr(args, "report"))
 
     def test_main_report_is_compact_and_image_records_are_separate(self) -> None:
         """验证主报告只保留统计，完整图片记录写入 JSONL。"""

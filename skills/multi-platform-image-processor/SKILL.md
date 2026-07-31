@@ -58,7 +58,7 @@ Windows 中文环境下如遇编码错误，先设置 `$env:PYTHONUTF8 = "1"`。
 - `--platform` 支持 `all`（默认）、`tmall`、`cbme`、`jd`、`vip`、`fengxiang-aikucun`、`offsite`。
 - `--template` 指定模板目录，默认使用 skill 内置 `template`。
 - `--output` 指定输出目录，默认 `E:\桌面\multi-platform-image-processor\output`。
-- `--report` 指定报告路径，默认保存到 `scripts/output/report/`，最多保留 100 份。
+- 报告统一保存到 `scripts/output/report/`，最多保留 100 份。
 - `--source` 自动检测数据源结构：
   - **单产品**：`--source` 指向 `数据包` 目录，或其父目录包含 `数据包/` 子目录，输出以 `数据包` 父文件夹名为产品名。
   - **批处理**：`--source` 指向一个包含多个产品子目录的总包（每个子目录内含 `数据包/`），自动逐个处理，输出目录以各产品的 `数据包` 父文件夹名命名。

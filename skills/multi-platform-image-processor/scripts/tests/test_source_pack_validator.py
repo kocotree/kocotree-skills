@@ -4,6 +4,7 @@ import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from PIL import Image, ImageDraw
 
@@ -177,13 +178,13 @@ class SourcePackValidatorTests(unittest.TestCase):
             output_root = temp_root / "输出"
             report_path = temp_root / "检测报告.json"
 
-            code = run_single(
-                source,
-                temp_root / "模板",
-                output_root,
-                "all",
-                report_path,
-            )
+            with patch("main.default_report_path", return_value=report_path):
+                code = run_single(
+                    source,
+                    temp_root / "模板",
+                    output_root,
+                    "all",
+                )
 
             self.assertEqual(code, 2)
             self.assertFalse(output_root.exists())

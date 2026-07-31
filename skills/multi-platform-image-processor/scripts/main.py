@@ -47,7 +47,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         choices=["all", *全部平台],
         help="要输出的平台，默认 all",
     )
-    parser.add_argument("--report", default="", help="报告 JSON 路径，默认保存到 scripts/output/report")
     return parser.parse_args(argv)
 
 
@@ -111,7 +110,6 @@ def run_single(
     template: Path,
     output_arg: Path,
     platform: str,
-    report_path: Path | None = None,
 ) -> int:
     """处理单个产品并生成平台图片、主报告、逐图明细和运行日志。
 
@@ -120,13 +118,11 @@ def run_single(
         template：平台目录模板路径。
         output_arg：所有产品共用的输出根目录。
         platform：需要处理的平台参数。
-        report_path：可选的主报告路径。
     返回值：
         0 表示成功，1 表示存在处理失败项，2 表示输入包检测失败。
     """
     source, output, product_name = resolve_source_and_output(source_arg, output_arg)
-    if report_path is None:
-        report_path = default_report_path(output)
+    report_path = default_report_path(output)
 
     run_id = report_artifact_prefix(report_path)
     display_product = product_name or source.parent.name or source.name
@@ -315,14 +311,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"\n{'='*60}")
             print(f"开始处理：{product_dir.name}")
             print(f"{'='*60}")
-            report_path = resolve_path(args.report) if args.report else None
-            code = run_single(product_dir, template, output_arg, args.platform, report_path)
+            code = run_single(product_dir, template, output_arg, args.platform)
             worst = max(worst, code)
         print(f"\n全部处理完成，共 {len(products)} 个产品。")
         return worst
 
-    report_path = resolve_path(args.report) if args.report else None
-    return run_single(source_arg, template, output_arg, args.platform, report_path)
+    return run_single(source_arg, template, output_arg, args.platform)
 
 
 if __name__ == "__main__":
