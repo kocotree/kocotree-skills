@@ -86,6 +86,16 @@ def unique_path(path: Path) -> Path:
 
 
 def new_report(source: Path, template: Path | None, output: Path, platform: str) -> dict[str, Any]:
+    """创建本次处理使用的初始报告。
+
+    参数：
+        source：输入图片包路径。
+        template：可选的平台目录模板路径。
+        output：输出目录路径。
+        platform：目标平台参数。
+    返回值：
+        包含处理配置、统计、追溯信息和异常列表的报告数据。
+    """
     return {
         "处理配置": {
             "源目录": str(source),
@@ -99,6 +109,7 @@ def new_report(source: Path, template: Path | None, output: Path, platform: str)
         "平台结果": {},
         "图片记录": [],
         "图片统计": {},
+        "PNG压缩统计": {},
         "追溯文件": {},
         "Agent复核建议": [],
         "警告": [],
@@ -171,7 +182,21 @@ def add_image_record(
     platform: str,
     usage: str,
     actions: list[str] | None = None,
+    details: dict[str, Any] | None = None,
 ) -> None:
+    """记录单张输出图片的处理结果。
+
+    参数：
+        report：当前运行的报告数据。
+        source：源图片路径。
+        output：输出图片路径。
+        platform：目标平台名称。
+        usage：图片用途。
+        actions：已执行的处理动作。
+        details：需要写入逐图明细的附加结构化信息。
+    返回值：
+        无返回值。
+    """
     info = image_info(output) if output.exists() else {}
     record = {
         "平台": platform,
@@ -181,6 +206,7 @@ def add_image_record(
         "处理动作": actions or [],
         "处理结果": "成功",
         **info,
+        **(details or {}),
     }
     report["图片记录"].append(record)
     logger.info(
@@ -261,6 +287,32 @@ def build_image_statistics(records: list[dict[str, Any]]) -> dict[str, Any]:
         usages = platform_statistics["按用途"]
         usages[usage] = usages.get(usage, 0) + 1
     return {"总数": len(records), "按平台": platforms}
+
+
+def build_png_compression_statistics(records: list[dict[str, Any]]) -> dict[str, int]:
+    """统计逐图明细中的 PNG 压缩结果。
+
+    参数：
+        records：本次运行产生的逐图处理记录。
+    返回值：
+        PNG 处理总数及四类压缩状态数量。
+    """
+    statistics = {
+        "处理图片数": 0,
+        "成功": 0,
+        "保留原图": 0,
+        "超出限制": 0,
+        "执行失败": 0,
+    }
+    for record in records:
+        compression = record.get("PNG压缩")
+        if not isinstance(compression, dict):
+            continue
+        status = compression.get("状态")
+        statistics["处理图片数"] += 1
+        if status in statistics and status != "处理图片数":
+            statistics[status] += 1
+    return statistics
 
 
 def finalize_report_summary(report: dict[str, Any], total_images: int | None = None) -> None:

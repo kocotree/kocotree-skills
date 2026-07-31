@@ -1,19 +1,25 @@
 from __future__ import annotations
 
 import io
+import logging
 import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 from PIL import Image, ImageOps
 
 from .utils import ensure_dir, unique_path, add_image_record, add_failure, add_warning
 
 
+logger = logging.getLogger(__name__)
+
 PNGQUANT_质量档 = ["80-95", "70-90", "60-85", "45-75", "30-65", "15-50", "0-40"]
 PNGQUANT_颜色档 = [256, 192, 128, 96, 64, 48, 32]
+PNGQUANT_跳过退出码 = {98, 99}
+PNGQUANT_单次超时秒数 = 60
 
 
 def open_image(path: Path) -> Image.Image:
@@ -95,22 +101,83 @@ def save_png_under(
     usage: str = "",
     actions: list[str] | None = None,
 ) -> Path | None:
+    """保存并压缩符合平台大小要求的 PNG 图片。
+
+    功能说明：先使用 Pillow 优化 PNG，再调用 pngquant 压缩并验收执行
+    结果；处理记录写入逐图明细，异常和超限结果写入报告。
+
+    参数：
+        image：需要保存的图片对象。
+        output：目标文件路径。
+        max_bytes：平台允许的文件大小上限。
+        report：当前运行的报告数据；为空时不记录报告。
+        source：源图片路径。
+        platform：目标平台名称。
+        usage：图片用途。
+        actions：保存前已执行的处理动作。
+    返回值：
+        成功时返回实际输出路径，保存失败时返回空值。
+    """
     try:
         ensure_dir(output.parent)
         target = unique_path(output.with_suffix(".png"))
         image.save(target, format="PNG", optimize=True, compress_level=9)
         pngquant = find_pngquant()
-        pngquant_action = "未找到pngquant"
         if pngquant:
-            pngquant_action = compress_pngquant_under_limit(pngquant, target, max_bytes)
+            compression = compress_pngquant_under_limit(pngquant, target, max_bytes)
+        else:
+            size = target.stat().st_size
+            compression = {
+                "状态": "执行失败",
+                "尝试次数": 0,
+                "退出码": None,
+                "输入大小KB": round(size / 1024, 2),
+                "输出大小KB": round(size / 1024, 2),
+                "限制KB": round(max_bytes / 1024, 2),
+                "错误": "未找到 pngquant",
+            }
+            logger.error(
+                "pngquant执行失败：未找到可执行文件 target=%r",
+                str(target),
+                extra={
+                    "stage": "PNG压缩",
+                    "event": "pngquant执行",
+                    "status": "failed",
+                },
+            )
         if report is not None:
             action_list = list(actions or [])
             action_list.append("Pillow PNG优化压缩")
-            action_list.append(pngquant_action)
-            add_image_record(report, source, target, platform, usage, action_list)
-            if not pngquant:
-                add_failure(report, "透明PNG压缩缺少pngquant", 文件=str(target), 提示="请通过uv安装pngquant-cli或设置PNGQUANT_BIN")
-            if target.stat().st_size > max_bytes:
+            action_list.append(f"pngquant压缩：{compression['状态']}")
+            process_result = {
+                "成功": "成功",
+                "保留原图": "成功",
+                "超出限制": "警告",
+                "执行失败": "部分失败",
+            }[compression["状态"]]
+            add_image_record(
+                report,
+                source,
+                target,
+                platform,
+                usage,
+                action_list,
+                {
+                    "处理结果": process_result,
+                    "PNG压缩": compression,
+                },
+            )
+            if compression["状态"] == "执行失败":
+                add_failure(
+                    report,
+                    "透明PNG压缩执行失败",
+                    文件=str(target),
+                    尝试次数=compression.get("尝试次数", 0),
+                    退出码=compression.get("退出码"),
+                    错误=compression.get("错误", ""),
+                    提示="请通过 uv 安装 pngquant-cli 或设置 PNGQUANT_BIN",
+                )
+            if compression["状态"] == "超出限制":
                 add_warning(
                     report,
                     "PNG压缩后仍超过大小限制",
@@ -147,50 +214,139 @@ def find_pngquant() -> str | None:
     return shutil.which("pngquant")
 
 
-def compress_pngquant_under_limit(pngquant: str, target: Path, max_bytes: int) -> str:
+def compress_pngquant_under_limit(
+    pngquant: str,
+    target: Path,
+    max_bytes: int,
+) -> dict[str, Any]:
+    """调用 pngquant 并验证执行结果和文件大小。
+
+    功能说明：按质量档和颜色档尝试压缩，校验退出码、输出文件和最终
+    大小，并返回成功、保留原图、超出限制或执行失败。
+
+    参数：
+        pngquant：pngquant 可执行文件路径。
+        target：Pillow 优化后的 PNG 文件路径。
+        max_bytes：平台允许的文件大小上限。
+    返回值：
+        包含最终状态、尝试次数、退出码、大小和失败原因的结构化结果。
+    """
     best = target
-    best_size = target.stat().st_size
-    used_quality = "未执行"
+    original_size = target.stat().st_size
+    best_size = original_size
+    attempts = 0
+    return_code: int | None = None
+    error = ""
+
     for color_count in PNGQUANT_颜色档:
         for quality in PNGQUANT_质量档:
+            attempts += 1
             tmp = target.with_suffix(f".q{quality.replace('-', '_')}.c{color_count}.png")
             if tmp.exists():
                 tmp.unlink()
-            result = subprocess.run(
-                [
-                    pngquant,
-                    str(color_count),
-                    "--force",
-                    "--skip-if-larger",
-                    "--output",
-                    str(tmp),
-                    "--quality",
-                    quality,
-                    str(target),
-                ],
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            if tmp.exists():
-                size = tmp.stat().st_size
-                if size < best_size:
-                    if best != target and best.exists():
-                        best.unlink()
-                    best = tmp
-                    best_size = size
-                    used_quality = f"{quality},颜色{color_count}"
-                elif tmp != best:
-                    tmp.unlink()
+            command = [
+                pngquant,
+                str(color_count),
+                "--force",
+                "--skip-if-larger",
+                "--output",
+                str(tmp),
+                "--quality",
+                quality,
+                str(target),
+            ]
+            try:
+                result = subprocess.run(
+                    command,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=PNGQUANT_单次超时秒数,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                tmp.unlink(missing_ok=True)
+                return_code = None
+                error = str(exc)
+                break
+
+            return_code = result.returncode
+            if return_code not in ({0} | PNGQUANT_跳过退出码):
+                tmp.unlink(missing_ok=True)
+                detail = (result.stderr or result.stdout).strip()
+                error = detail[:500] or f"pngquant 退出码 {return_code}"
+                break
+            if return_code in PNGQUANT_跳过退出码:
+                tmp.unlink(missing_ok=True)
                 if best_size <= max_bytes:
                     break
-            elif result.returncode == 99:
-                used_quality = f"{quality},颜色{color_count}未达到质量下限"
-        if best_size <= max_bytes:
+                continue
+            if not tmp.exists():
+                error = "pngquant 返回成功但没有生成输出文件"
+                break
+
+            size = tmp.stat().st_size
+            if size < best_size:
+                if best != target:
+                    best.unlink(missing_ok=True)
+                best = tmp
+                best_size = size
+            else:
+                tmp.unlink()
+            if best_size <= max_bytes:
+                break
+        if error or best_size <= max_bytes:
             break
-    if best != target:
+
+    used_candidate = best != target
+    if used_candidate:
         best.replace(target)
-    return f"pngquant压缩质量{used_quality}"
+    final_size = target.stat().st_size
+    if error:
+        status = "执行失败"
+        log_level = logging.ERROR
+    elif final_size > max_bytes:
+        status = "超出限制"
+        log_level = logging.WARNING
+    elif used_candidate:
+        status = "成功"
+        log_level = logging.INFO
+    else:
+        status = "保留原图"
+        log_level = logging.INFO
+
+    logger.log(
+        log_level,
+        "pngquant处理完成 target=%r status=%s attempts=%d input_kb=%.2f output_kb=%.2f limit_kb=%.2f",
+        str(target),
+        status,
+        attempts,
+        original_size / 1024,
+        final_size / 1024,
+        max_bytes / 1024,
+        extra={
+            "stage": "PNG压缩",
+            "event": "pngquant执行",
+            "status": {
+                "成功": "success",
+                "保留原图": "success",
+                "超出限制": "warning",
+                "执行失败": "failed",
+            }[status],
+        },
+    )
+    compression = {
+        "状态": status,
+        "尝试次数": attempts,
+        "退出码": return_code,
+        "输入大小KB": round(original_size / 1024, 2),
+        "输出大小KB": round(final_size / 1024, 2),
+        "限制KB": round(max_bytes / 1024, 2),
+    }
+    if error:
+        compression["错误"] = error
+    return compression
 
 
 def process_jpg_canvas(

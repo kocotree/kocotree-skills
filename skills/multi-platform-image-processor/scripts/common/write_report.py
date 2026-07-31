@@ -6,7 +6,13 @@ from pathlib import Path
 from typing import Any
 
 from .run_logging import report_artifact_prefix
-from .utils import build_image_statistics, ensure_dir, finalize_report_summary, write_json
+from .utils import (
+    build_image_statistics,
+    build_png_compression_statistics,
+    ensure_dir,
+    finalize_report_summary,
+    write_json,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -62,6 +68,7 @@ def write_report(report: dict, path: Path) -> None:
 
     write_image_records(records, detail_path, run_id, product)
     main_report["图片统计"] = build_image_statistics(records)
+    main_report["PNG压缩统计"] = build_png_compression_statistics(records)
     trace_files = dict(main_report.get("追溯文件", {}))
     trace_files["逐图明细"] = str(detail_path.resolve())
     main_report["追溯文件"] = trace_files
