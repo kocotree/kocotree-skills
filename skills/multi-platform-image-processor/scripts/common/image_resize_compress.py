@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -192,11 +193,12 @@ def save_png_under(
         return None
 
 
+@lru_cache(maxsize=1)
 def find_pngquant() -> str | None:
     env_path = os.environ.get("PNGQUANT_BIN")
-    candidates = []
     if env_path:
-        candidates.append(Path(env_path))
+        return env_path
+    candidates = []
     executable_dir = Path(sys.executable).resolve().parent
     candidates.extend(
         [

@@ -7,9 +7,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import threading
 import urllib.request
 import zipfile
+from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
 
@@ -101,14 +101,9 @@ def _uv_sync(script_dir: Path) -> tuple[bool, str]:
     return True, "uv sync 完成"
 
 
-def _ensure_venv(script_dir: Path) -> None:
-    if _venv_python(script_dir).exists():
-        return
-    ok, msg = _uv_sync(script_dir)
-    if ok:
-        print(f"text2image 依赖已自动安装：{script_dir}", flush=True)
-    else:
-        print(f"text2image 依赖自动安装失败：{msg}", flush=True)
+def _ensure_venv(script_dir: Path) -> tuple[bool, str]:
+    """同步指定脚本目录的 uv 虚拟环境。"""
+    return _uv_sync(script_dir)
 
 
 # ── Skill discovery & install ────────────────────────────────
@@ -154,39 +149,47 @@ def _download_from_github(target: Path) -> tuple[Path | None, str]:
     return target, f"已从 GitHub 安装 text2image：{target}"
 
 
-_resolve_lock = threading.Lock()
-_resolve_cache: tuple[Path | None, str] | None = None
-
-
+@lru_cache(maxsize=1)
 def _resolve_skill_dir() -> tuple[Path | None, str]:
-    global _resolve_cache
-    if _resolve_cache is not None:
-        return _resolve_cache
+    """读取初始化流程记录的 text2image 目录。"""
+    configured = os.environ.get("TEXT2IMAGE_SKILL_DIR")
+    if not configured:
+        return None, "环境未初始化，请在 scripts 目录执行：uv run init.py"
+    candidate = Path(configured).expanduser().resolve()
+    if not _is_valid_skill(candidate):
+        return None, f"text2image 初始化路径无效：{candidate}"
+    if not _venv_python(candidate / "scripts").exists():
+        return None, f"text2image 虚拟环境不存在：{candidate / 'scripts' / '.venv'}"
+    return candidate, f"text2image 已就绪：{candidate}"
 
-    with _resolve_lock:
-        if _resolve_cache is not None:
-            return _resolve_cache
 
-        for candidate in _find_local_candidates():
-            if _is_valid_skill(candidate):
-                _ensure_venv(candidate / "scripts")
-                _resolve_cache = (candidate, f"已在本地找到 text2image：{candidate}")
-                return _resolve_cache
+def initialize_text2image() -> tuple[Path | None, str]:
+    """安装并初始化 text2image skill。
 
-        sibling = _current_skill_root().parent / "text2image"
-        if sibling.exists():
-            if _is_valid_skill(sibling):
-                _ensure_venv(sibling / "scripts")
-                _resolve_cache = (sibling, f"text2image 已安装：{sibling}")
-                return _resolve_cache
-            _resolve_cache = (None, f"text2image 目录已存在但结构不完整：{sibling}")
-            return _resolve_cache
+    功能说明：查找或安装 text2image，并在初始化阶段同步其 uv 环境。
+    返回值：
+        text2image skill 目录和初始化说明；失败时目录为空。
+    """
+    for candidate in _find_local_candidates():
+        if not _is_valid_skill(candidate):
+            continue
+        ok, message = _ensure_venv(candidate / "scripts")
+        if ok:
+            return candidate, f"text2image 已就绪：{candidate}"
+        return None, message
 
-        installed, msg = _download_from_github(sibling)
-        if installed:
-            _ensure_venv(installed / "scripts")
-        _resolve_cache = (installed, msg)
-        return _resolve_cache
+    sibling = _current_skill_root().parent / "text2image"
+    if sibling.exists():
+        if not _is_valid_skill(sibling):
+            return None, f"text2image 目录结构不完整：{sibling}"
+        ok, message = _ensure_venv(sibling / "scripts")
+        return (sibling, f"text2image 已就绪：{sibling}") if ok else (None, message)
+
+    installed, message = _download_from_github(sibling)
+    if installed is None:
+        return None, message
+    ok, sync_message = _ensure_venv(installed / "scripts")
+    return (installed, message) if ok else (None, sync_message)
 
 
 # ── Text removal execution ───────────────────────────────────
@@ -195,7 +198,7 @@ def _build_command(script_dir: Path, main_script: Path) -> list[str]:
     venv_py = _venv_python(script_dir)
     if not venv_py.exists():
         raise FileNotFoundError(
-            f"text2image 虚拟环境 Python 不存在，请先在 {script_dir} 执行 uv sync：{venv_py}"
+            f"text2image 虚拟环境 Python 不存在，请在 scripts 目录重新执行 uv run init.py：{venv_py}"
         )
     return [str(venv_py), str(main_script)]
 

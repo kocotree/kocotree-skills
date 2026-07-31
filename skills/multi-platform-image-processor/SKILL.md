@@ -7,13 +7,13 @@ metadata:
 
 # 多平台图片处理
 
-## 环境准备
+## 环境初始化
 
-首次使用前需在 `scripts/` 目录下初始化 Python 环境：
+首次安装后执行：
 
 ```bash
 cd scripts
-uv sync
+uv run init.py
 ```
 
 如未安装 uv，先执行：
@@ -21,12 +21,9 @@ uv sync
 - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
 
-初始化完成后，使用 `.venv` 中的 Python 执行工具脚本。
+初始化流程创建本 skill 的 `.venv`，安装并初始化 `text2image`，验证 `pngquant` 实际执行，并完成飞书 OAuth 授权。出现授权链接时需在浏览器中完成授权；全部步骤通过后写入当前虚拟环境的初始化状态。
 
-**注意**  
-
-去除文字强依赖于 `text2image` skill，首次使用会自动安装  
-首次使用该技能要求auth授权，**务必**按照提示提醒用户完成授权，**禁止跳过授权**
+初始化完成后，使用 `.venv` 中的 Python 执行图片处理脚本。
 
 ## 核心流程
 
@@ -72,7 +69,9 @@ Windows 中文环境下如遇编码错误，先设置 `$env:PYTHONUTF8 = "1"`。
 ## 脚本职责
 
 - `scripts/main.py`：总入口，调度扫描、母版生成、平台派生、质检、报告。
+- `scripts/init.py`：初始化虚拟环境后的工具依赖、`text2image` 和飞书认证。
 - `scripts/common/`：通用工具模块。
+  - `environment.py`：保存和加载当前虚拟环境的初始化状态。
   - `utils.py`：路径、图片信息、报告管理等基础工具。
   - `image_resize_compress.py`：图片缩放、格式转换、JPG/PNG 压缩。
   - `scan_source_pack.py`：扫描源包并生成素材清单。
@@ -81,7 +80,7 @@ Windows 中文环境下如遇编码错误，先设置 `$env:PYTHONUTF8 = "1"`。
   - `detail_page_slice.py`：详情页缩放、拼接、切片、连续命名。
   - `transparent_image_fit.py`：透明图裁边、顶满、京东放大 4px、唯品会放大 10px、保留 alpha。
   - `logo_overlay.py`：站外白底图叠加 `logo3.png`。
-  - `text_removal.py`：调用 text2image 模型生成站外 SKU 去文字图，执行尺寸与受保护区域验收，并管理临时图保留规则。
+  - `text_removal.py`：使用初始化完成的 text2image 环境生成站外 SKU 去文字图，执行尺寸与受保护区域验收，并管理临时图保留规则。
   - `sku_card_crop.py`：识别右侧商品卡片和彩色标签，生成带左侧安全余量的模型输入，并将通过验收的标签内部区域贴回原图。
   - `quality_audit.py`：按平台检查已生成文件的已配置规则。
   - `run_logging.py`：创建每次运行独立的结构化日志并管理保留数量。
@@ -102,6 +101,7 @@ Windows 中文环境下如遇编码错误，先设置 `$env:PYTHONUTF8 = "1"`。
 ## 执行原则
 
 - 先产出天猫通用版，再派生其他平台，避免多处重复处理详情页。
+- 图片处理使用 `uv run init.py` 生成的环境状态；飞书 access token 过期时使用已有 refresh token 自动刷新。
 - 输入包检测未通过时必须停止，不得用非标准目录猜测或降级继续生成。
 - 输入包检测未通过时，最终答复必须包含报告提供的完整标准输入结构，帮助用户直接整理数据包。
 - 透明图脏点导致检测失败时，最终答复必须展示透明图问题汇总和对应单图诊断图，说明上方原图无覆盖、下方为定位与增强证据。
@@ -109,7 +109,7 @@ Windows 中文环境下如遇编码错误，先设置 `$env:PYTHONUTF8 = "1"`。
 - 自动处理失败时仍尽量输出最接近规则的结果，并在报告里标记 `警告`、`风险`、`失败项` 或 `Agent复核建议`。
 - 模板中存在但源数据包没有素材的文件夹必须保留为空文件夹。
 - 平台规则标记为空的目录保留空目录结构。
-- 透明 PNG 必须调用 `pngquant` 并验收退出码、输出文件和最终大小；超出平台限制时写入警告，执行失败时写入失败项。项目依赖 `pngquant-cli` 会在 `uv run` 时提供可执行文件。如需使用外部二进制，可设置 `PNGQUANT_BIN`。
+- 透明 PNG 必须调用初始化验证通过的 `pngquant` 并验收退出码、输出文件和最终大小；超出平台限制时写入警告，执行失败时写入失败项。
 
 ## 重要说明
 

@@ -6,7 +6,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from auth.auth_client import ensure_token
+from auth.auth_client import ensure_existing_token
 from common import (
     全部平台,
     平台目录名,
@@ -19,6 +19,7 @@ from common import (
     ensure_dir,
 )
 from common.quality_audit import run_quality_audit
+from common.environment import configure_runtime_environment
 from common.run_logging import (
     close_run_file_logging,
     configure_run_file_logging,
@@ -285,15 +286,14 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s - %(message)s",
     )
+    args = parse_args(argv or sys.argv[1:])
     try:
-        ensure_token()
-    except SystemExit:
-        return 1
+        configure_runtime_environment()
+        ensure_existing_token()
     except RuntimeError as e:
-        print(f"认证失败：{e}")
+        print(f"启动失败：{e}")
         return 1
 
-    args = parse_args(argv or sys.argv[1:])
     source_arg = resolve_path(args.source)
     template = resolve_path(args.template) if args.template else default_template_path()
     output_arg = resolve_path(args.output) if args.output else default_output_path()
