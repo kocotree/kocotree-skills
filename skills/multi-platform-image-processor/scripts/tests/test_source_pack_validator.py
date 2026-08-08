@@ -126,10 +126,10 @@ class SourcePackValidatorTests(unittest.TestCase):
                 if "多个主体组成部分" in item["信息"]
             )
             self.assertEqual(warning["主体区域数"], 2)
-            self.assertEqual(warning["判定方式"], "自动判断")
+            self.assertEqual(warning["判定方式"], "Skill规则")
 
     def test_uncertain_transparent_region_requires_confirmation(self) -> None:
-        """验证大小不明确的独立区域需要文件规则确认。"""
+        """验证大小不明确的独立区域要求调整 Skill 规则或清理图片。"""
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "数据包"
             create_standard_pack(root, uncertain=True)
@@ -142,10 +142,50 @@ class SourcePackValidatorTests(unittest.TestCase):
                 if "无法自动判断" in item["信息"]
             )
             self.assertEqual(problem["待确认区域数"], 1)
-            self.assertIn("透明图规则.json", problem["处理建议"])
+            self.assertIn("Skill", problem["处理建议"])
+            self.assertNotIn(str(root), problem["规则文件"])
 
-    def test_component_rule_accepts_confirmed_second_subject(self) -> None:
-        """验证文件规则可以确认较小的第二主体。"""
+    def test_skill_rule_config_changes_subject_boundary(self) -> None:
+        """验证 Skill 级规则可以统一调整明显主体边界。"""
+        with TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            root = temp_root / "数据包"
+            create_standard_pack(root, uncertain=True)
+            rule_path = temp_root / "Skill配置" / "透明图规则.json"
+            rule_path.parent.mkdir(parents=True)
+            rule_path.write_text(
+                json.dumps(
+                    {
+                        "透明可见阈值": 8,
+                        "明显主体": {
+                            "最小面积比例": 0.01,
+                            "细长区域最小面积比例": 0.002,
+                            "细长区域最小长边比例": 0.15,
+                        },
+                        "明显脏点": {
+                            "最大像素数": 4,
+                            "最大面积比例": 0.001,
+                            "最大长边比例": 0.05,
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("common.source_pack_validator.透明图规则路径", rule_path):
+                result = validate_source_pack(root)
+
+            self.assertTrue(result["通过"])
+            warning = next(
+                item for item in result["警告"]
+                if "多个主体组成部分" in item["信息"]
+            )
+            self.assertEqual(warning["判定方式"], "Skill规则")
+            self.assertEqual(result["透明图检测规则"]["配置文件"], str(rule_path))
+
+    def test_product_side_rule_file_is_ignored(self) -> None:
+        """验证产品数据包中的规则文件不会参与检测。"""
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "数据包"
             create_standard_pack(root, uncertain=True)
@@ -160,35 +200,30 @@ class SourcePackValidatorTests(unittest.TestCase):
 
             result = validate_source_pack(root)
 
-            self.assertTrue(result["通过"])
-            warning = next(
-                item for item in result["警告"]
-                if "多个主体组成部分" in item["信息"]
-            )
-            self.assertEqual(warning["判定方式"], "文件规则")
-
-    def test_component_rule_rejects_regions_over_limit(self) -> None:
-        """验证文件规则之外的额外独立区域仍会阻断处理。"""
-        with TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir) / "数据包"
-            create_standard_pack(root, dirty=True, uncertain=True)
-            rule_path = root / "透明图" / "透明图规则.json"
-            rule_path.write_text(
-                json.dumps(
-                    {"文件规则": {"颜色.png": {"允许主体数": 2}}},
-                    ensure_ascii=False,
-                ),
-                encoding="utf-8",
-            )
-
-            result = validate_source_pack(root)
-
             self.assertFalse(result["通过"])
             problem = next(
                 item for item in result["问题"]
-                if "超过配置允许主体数" in item["信息"]
+                if "无法自动判断" in item["信息"]
             )
-            self.assertEqual(problem["主体外独立区域数"], 1)
+            self.assertEqual(problem["待确认区域数"], 1)
+            self.assertNotEqual(problem["规则文件"], str(rule_path))
+
+    def test_invalid_skill_rule_blocks_processing(self) -> None:
+        """验证 Skill 级规则无效时停止处理并报告配置问题。"""
+        with TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            root = temp_root / "数据包"
+            create_standard_pack(root)
+            rule_path = temp_root / "无效规则.json"
+            rule_path.write_text("{}", encoding="utf-8")
+
+            with patch("common.source_pack_validator.透明图规则路径", rule_path):
+                result = validate_source_pack(root)
+
+            self.assertFalse(result["通过"])
+            self.assertTrue(
+                any("Skill 透明图规则无效" in item["信息"] for item in result["问题"])
+            )
 
     def test_nearly_transparent_single_pixel_is_ignored(self) -> None:
         """验证透明度不超过处理阈值的单像素不会形成独立区域。"""
