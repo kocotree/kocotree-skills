@@ -7,14 +7,13 @@ import sys
 from pathlib import Path
 
 from auth.auth_client import ensure_token
-from common.environment import save_environment_state
-from common.image_resize_compress import find_pngquant
-from common.text_removal import initialize_text2image
 from common.bartender_exporter import find_bartender_resources
+from common.environment import save_environment_state
 from common.font_assets import load_font_assets
+from common.image_resize_compress import find_pngquant
 from common.nas_paths import require_accessible_directory, to_unc_path
 from common.settings import resolve_business_paths
-
+from common.text_removal import initialize_text2image
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +133,7 @@ def validate_business_environment() -> dict[str, str]:
     if sys.platform != "win32":
         status["BarTender"] = "当前系统不支持"
         status["NAS"] = "当前系统未检查 Windows 共享目录"
-        logger.warning("当前系统不是 Windows，合格证专项需要在安装 BarTender 的 Windows 执行")
+        logger.warning("当前系统不是 Windows，完整流程需要在安装 BarTender 的 Windows 执行")
         return status
     executable, _ = find_bartender_resources()
     status["BarTender"] = str(executable)

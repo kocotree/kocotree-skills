@@ -6,7 +6,11 @@ from pathlib import Path
 from typing import Any
 
 from common.nas_paths import require_accessible_directory, to_unc_path
-from common.product_info_reader import ProductInfoRecord, extract_chinese_material, find_product_info
+from common.product_info_reader import (
+    ProductInfoRecord,
+    extract_chinese_material,
+    find_product_info,
+)
 from common.product_matcher import infer_product_code
 from common.settings import resolve_business_paths
 from common.source_normalizer import cleanup_local_copy, create_local_copy
@@ -21,7 +25,6 @@ from .business_support import default_business_report_path, product_match_to_dic
 from .certificate_assets import generate_business_images
 from .material_correction import apply_material_plan
 from .platform_processing import default_output_path, default_template_path, run_single
-
 
 logger = logging.getLogger(__name__)
 

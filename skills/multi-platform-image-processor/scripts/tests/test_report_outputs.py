@@ -8,10 +8,10 @@ from tempfile import TemporaryDirectory
 
 from PIL import Image
 
-from main import parse_args
 from common.run_logging import close_run_file_logging, configure_run_file_logging
 from common.utils import add_image_record, new_report
 from common.write_report import image_records_path, write_report
+from main import parse_args
 
 
 class ReportOutputsTests(unittest.TestCase):

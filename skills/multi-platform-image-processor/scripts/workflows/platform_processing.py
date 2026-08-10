@@ -5,14 +5,14 @@ from datetime import datetime
 from pathlib import Path
 
 from common import (
-    全部平台,
-    平台目录名,
     add_failure,
     add_platform_result,
     add_warning,
     copy_template_empty_dirs,
     ensure_dir,
     new_report,
+    全部平台,
+    平台目录名,
 )
 from common.quality_audit import run_quality_audit
 from common.run_logging import (
@@ -31,7 +31,6 @@ from platforms.jd import derive as derive_jd
 from platforms.offsite import derive as derive_offsite
 from platforms.tmall import build as build_tmall
 from platforms.vip import derive as derive_vip
-
 
 logger = logging.getLogger(__name__)
 

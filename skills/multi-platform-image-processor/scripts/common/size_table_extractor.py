@@ -9,7 +9,6 @@ from PIL import Image
 from .certificate_composer import fit_contain, trim_white
 from .utils import ensure_dir
 
-
 logger = logging.getLogger(__name__)
 
 

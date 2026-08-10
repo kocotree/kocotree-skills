@@ -10,7 +10,6 @@ from PIL import Image, ImageChops, ImageDraw, ImageFont
 from .font_assets import FontAsset, require_glyphs
 from .utils import ensure_dir
 
-
 logger = logging.getLogger(__name__)
 
 

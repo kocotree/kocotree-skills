@@ -14,7 +14,6 @@ from common.workflow_report import add_report_item
 
 from .business_support import parse_box
 
-
 logger = logging.getLogger(__name__)
 
 

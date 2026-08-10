@@ -8,7 +8,6 @@ from auth.auth_client import ensure_token
 from common.environment import configure_runtime_environment
 from workflows.full_package import run_full_workflow
 
-
 logger = logging.getLogger(__name__)
 
 

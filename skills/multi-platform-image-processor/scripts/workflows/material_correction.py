@@ -19,7 +19,6 @@ from .business_support import (
     resolve_relative_image,
 )
 
-
 logger = logging.getLogger(__name__)
 
 

@@ -1,4 +1,4 @@
 interface:
   display_name: "多平台商品图片处理"
   short_description: "处理六平台图片、合格证、尺码图与详情页面料"
-  default_prompt: "使用 $multi-platform-image-processor 处理商品数据包并输出合规的多平台图片与业务图片。"
+  default_prompt: "使用 $multi-platform-image-processor 处理单个商品数据包，完成面料核对、六平台图片、三张业务图片和最终质检。"

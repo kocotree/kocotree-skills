@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from PIL import Image

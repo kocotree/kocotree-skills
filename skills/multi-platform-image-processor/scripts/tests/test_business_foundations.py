@@ -7,13 +7,21 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from openpyxl import Workbook
 import xlwt
+from openpyxl import Workbook
 
 from common.font_assets import load_font_assets, require_glyphs
 from common.nas_paths import require_accessible_directory, to_unc_path
-from common.product_info_reader import extract_chinese_material, find_product_info, read_product_records
-from common.product_matcher import contains_exact_code, infer_product_code, select_bartender_file
+from common.product_info_reader import (
+    extract_chinese_material,
+    find_product_info,
+    read_product_records,
+)
+from common.product_matcher import (
+    contains_exact_code,
+    infer_product_code,
+    select_bartender_file,
+)
 from common.settings import resolve_business_paths
 from common.source_normalizer import create_local_copy, detect_source_kind
 
@@ -21,8 +29,8 @@ from common.source_normalizer import create_local_copy, detect_source_kind
 class BusinessSettingsTests(unittest.TestCase):
     """验证业务路径配置和 UNC 路径归一化。"""
 
-    def test_command_line_path_has_highest_priority(self) -> None:
-        """验证命令行路径覆盖环境变量和配置文件。"""
+    def test_environment_path_has_highest_priority(self) -> None:
+        """验证环境变量中的 NAS 路径覆盖配置文件。"""
         with TemporaryDirectory() as temp_dir_value:
             config = Path(temp_dir_value) / "paths.json"
             config.write_text(
@@ -37,9 +45,9 @@ class BusinessSettingsTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with patch.dict(os.environ, {"KOCOTREE_NAS_ROOT": r"\\env\share"}):
-                paths = resolve_business_paths(r"\\cli\share", config_path=config)
+                paths = resolve_business_paths(config_path=config)
 
-            self.assertEqual(str(paths.nas_root).rstrip("\\"), r"\\cli\share")
+            self.assertEqual(str(paths.nas_root).rstrip("\\"), r"\\env\share")
             self.assertIn("产品信息", str(paths.product_info_root))
 
     def test_drive_path_is_converted_to_unc(self) -> None:

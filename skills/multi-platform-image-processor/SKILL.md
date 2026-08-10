@@ -1,96 +1,75 @@
 ---
 name: multi-platform-image-processor
-description: 全自动处理商品图片数据包并输出多平台合规图片包与业务图片。用于完整全平台处理，制作合格证图、吊牌图、尺码图，依据产品信息 Excel 检查和修正详情页中文面料，以及从原始包、人工处理包或多平台成品包派生天猫、京东、CBME、唯品会、蜂享家＋爱库存和站外通用版图片。
+description: 全自动处理单个商品图片数据包，依据产品信息 Excel 检查并修正详情页中文面料，生成天猫、京东、CBME、唯品会、蜂享家＋爱库存、站外通用版图片，以及合格证图、吊牌图、尺码图和完整质检报告。
 ---
 
 # 多平台图片处理
 
-## 运行模式
+## 输入
 
-通过 `scripts/main.py --mode` 选择流程：
+业务用户提供产品数据包路径。支持以下两种等价入口：
 
-- `full`：核对并修正面料，生成六平台图片和业务图片，执行完整交付质检。
-- `certificate`：生成合格证图、吊牌图和尺码图，不运行平台派生。
-- `material`：检查并修正详情页面料；成品包输出修改副本。
-- `platform`：运行六平台图片处理引擎，兼容平台专项任务。
+```text
+产品目录
+└─ 数据包
 
-完整读取模式与输入要求时使用 [workflow_modes.md](references/workflow_modes.md)。
+数据包
+```
+
+目录名能够唯一识别产品货号时直接使用；否则补充产品货号。产品名称用于同货号候选复核。输出位置为空时使用默认输出目录。
 
 ## 环境准备
 
-在 `scripts/` 目录初始化环境：
+在 `scripts/` 目录执行：
 
 ```powershell
 uv sync
 .venv\Scripts\python.exe init.py
 ```
 
-初始化会校验 Python 环境、图片压缩工具、业务字体、Excel 读取能力和 BarTender 可用性。站外 SKU 去字使用 `text2image` Skill；首次调用时按认证提示完成授权。
+初始化校验 Python 环境、PNG 压缩工具、业务字体、Excel 读取能力、NAS 业务目录和 BarTender。
 
-## 推荐命令
+## 执行
 
-完整流程：
-
-```powershell
-.venv\Scripts\python.exe main.py `
-  --mode full `
-  --source "产品数据包路径" `
-  --product-code "产品货号" `
-  --product-name "产品名称" `
-  --include-certificate-assets
-```
-
-专项流程：
+标准命令：
 
 ```powershell
-.venv\Scripts\python.exe main.py --mode certificate --source "产品路径" --product-code "产品货号"
-.venv\Scripts\python.exe main.py --mode material --source "产品路径" --product-code "产品货号"
-.venv\Scripts\python.exe main.py --mode platform --source "数据包路径" --platform all
+.venv\Scripts\python.exe main.py --source "产品数据包路径"
 ```
 
-常用参数：
+公开可选参数：
 
-- `--source`：数据包、产品目录、批处理总目录或多平台成品包。
 - `--output`：最终输出根目录。
-- `--report`：报告文件路径。
-- `--product-code`、`--product-name`：产品身份信息。
-- `--include-certificate-assets`：完整流程生成固定三张业务图片。
-- `--include-certificate-fabric`：合格证图加入 Excel 中文面料。
-- `--nas-root`、`--product-info-root`、`--certificate-root`：覆盖业务资料路径。
-- `--material-plan`：Agent 确认的详情页面料区域、原文和版式参数 JSON。
-- `--size-table-source`、`--size-table-box`：实际尺码表详情图和完整内容坐标。
-- `--fabric-anchor`：合格证加入面料时“等级”字段下方的 `x,y` 锚点。
-- `--visual-review-approved`：Agent 完成原尺寸视觉复核后标记检查通过。
-- `--platform`：`all`、`tmall`、`cbme`、`jd`、`vip`、`fengxiang-aikucun` 或 `offsite`。
-- `--template`：平台模板目录。
+- `--product-code`：产品货号。
+- `--product-name`：产品名称。
 
-## 完整流程
+Agent 在执行前完成详情页面料区域与实际尺码表区域的视觉定位，将定位结果作为内部上下文传给脚本。业务用户只需提供产品数据包和必要的产品身份信息。
 
-按以下顺序执行 `full`：
+## 固定流程
 
-1. 解析产品身份、源路径和输出路径，将映射盘符归一为 UNC 路径。
-2. 匹配唯一产品信息 Excel 和 BarTender 文件，并创建本地临时源副本。
-3. 读取 Excel 中文面料，检查并修正详情页母版。
-4. 运行六平台处理引擎并读取平台子报告。
-5. 提取实际尺码表，始终生成 `尺码图\尺码图.jpg`。
-6. 触发业务图片时生成合格证图、吊牌图和尺码图。
-7. 执行业务级质检并写入完整流程报告。
+1. 识别产品身份并将 NAS 路径归一为 UNC 路径。
+2. 唯一匹配产品信息 Excel 与现有 BarTender 文件。
+3. 创建本地工作副本，依据 Excel 中文面料检查并修正详情页母版。
+4. 生成天猫、京东、CBME、唯品会、蜂享家＋爱库存和站外通用版图片。
+5. 生成 `合格证\合格证图.jpg`、`吊牌图\吊牌图.jpg` 和 `尺码图\尺码图.jpg`。
+6. 执行平台、业务图片和面料质检，写入顶层报告、平台子报告、运行日志和逐图明细。
 
-## 参考资料
+## 规则索引
 
-- 识别模式、输入包类型和完成条件：读取 [workflow_modes.md](references/workflow_modes.md)。
-- 处理平台图片：读取 [platform_rules.md](references/platform_rules.md)。
-- 生成合格证图、吊牌图或尺码图：读取 [certificate_assets.md](references/certificate_assets.md)。
-- 检查或修正面料：读取 [material_correction.md](references/material_correction.md)。
-- 访问 NAS、Excel 或 BarTender 文件：读取 [nas_and_product_sources.md](references/nas_and_product_sources.md)。
-- 确认输出目录和报告字段：读取 [output_contract.md](references/output_contract.md)。
-- 执行自动与业务质检：读取 [quality_checks.md](references/quality_checks.md)。
-- 处理视觉定位和复核：读取 [agent_visual_tasks.md](references/agent_visual_tasks.md)。
+- 平台输入、转换和目录规则：[platform_rules.md](references/platform_rules.md)
+- 合格证图、吊牌图和尺码图：[certificate_assets.md](references/certificate_assets.md)
+- 详情页面料检查与字体规则：[material_correction.md](references/material_correction.md)
+- NAS、Excel 与 BarTender 匹配：[nas_and_product_sources.md](references/nas_and_product_sources.md)
+- 输出目录、报告和失败策略：[output_contract.md](references/output_contract.md)
+- 自动检查与完成判定：[quality_checks.md](references/quality_checks.md)
+- Agent 视觉定位与复核：[agent_visual_tasks.md](references/agent_visual_tasks.md)
 
 ## 完成要求
 
-- 所需产品资料匹配唯一，面料检查已完成。
-- 平台子报告和完整流程报告中没有未解决的失败项。
-- 完整流程的尺码图存在且通过质检；触发业务图片时三张图片全部通过质检。
-- 报告中的警告、风险和 Agent 复核建议逐项反馈给用户。
-- 遇到缺失资料、候选冲突或视觉任务无法可靠自动完成时，保留已完成结果并明确报告阻塞项。
+- 产品信息 Excel 和 BarTender 文件匹配唯一。
+- 详情页全部面料区域已依据 Excel 中文原文完成检查，差异项已修正。
+- 六个平台目录与三张业务图片存在并通过自动检查。
+- Agent 已完成详情模块、站外去字、透明图、面料、尺码表和业务图片的视觉复核。
+- 顶层报告和平台子报告没有未解决的失败项。
+
+缺少 Excel、BarTender、实际尺码表或可靠视觉区域时，报告已完成结果、候选文件和具体阻塞项。

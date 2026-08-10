@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -56,17 +55,11 @@ def load_json_config(path: Path) -> dict[str, Any]:
 
 
 def resolve_business_paths(
-    nas_root: str = "",
-    product_info_root: str = "",
-    certificate_root: str = "",
     config_path: Path | None = None,
 ) -> BusinessPaths:
-    """按命令行、环境变量和配置文件优先级解析业务路径。
+    """按环境变量和配置文件解析业务路径。
 
     参数：
-        nas_root：命令行指定的 NAS 根目录。
-        product_info_root：命令行指定的产品信息目录。
-        certificate_root：命令行指定的合格证目录。
         config_path：可选的业务路径配置文件。
     返回值：
         解析完成的业务路径集合。
@@ -74,22 +67,15 @@ def resolve_business_paths(
     path = config_path or config_root() / "business_paths.json"
     config = load_json_config(path)
     root_value = (
-        nas_root
-        or os.environ.get("KOCOTREE_NAS_ROOT", "")
+        os.environ.get("KOCOTREE_NAS_ROOT", "")
         or str(config.get("NAS根目录", ""))
     ).strip()
     if not root_value:
         raise RuntimeError("NAS 根目录未配置")
 
     root = Path(root_value)
-    product_value = (
-        product_info_root
-        or os.environ.get("KOCOTREE_PRODUCT_INFO_ROOT", "")
-    ).strip()
-    certificate_value = (
-        certificate_root
-        or os.environ.get("KOCOTREE_CERTIFICATE_ROOT", "")
-    ).strip()
+    product_value = os.environ.get("KOCOTREE_PRODUCT_INFO_ROOT", "").strip()
+    certificate_value = os.environ.get("KOCOTREE_CERTIFICATE_ROOT", "").strip()
     product_path = (
         Path(product_value)
         if product_value
