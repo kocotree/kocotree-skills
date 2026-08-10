@@ -12,7 +12,7 @@ from typing import Any
 
 from PIL import Image, ImageOps
 
-from .utils import ensure_dir, unique_path, add_image_record, add_failure, add_warning
+from .utils import ensure_dir, unique_path, add_image_record, add_failure
 
 
 logger = logging.getLogger(__name__)
@@ -78,7 +78,7 @@ def save_jpg_under(
             action_list.append(f"JPG压缩质量{chosen_quality}")
             add_image_record(report, source, target, platform, usage, action_list)
             if target.stat().st_size > max_bytes:
-                add_warning(
+                add_failure(
                     report,
                     "JPG压缩后仍超过大小限制",
                     文件=str(target),
@@ -153,7 +153,7 @@ def save_png_under(
             process_result = {
                 "成功": "成功",
                 "保留原图": "成功",
-                "超出限制": "警告",
+                "超出限制": "失败",
                 "执行失败": "部分失败",
             }[compression["状态"]]
             add_image_record(
@@ -179,7 +179,7 @@ def save_png_under(
                     提示="请通过 uv 安装 pngquant-cli 或设置 PNGQUANT_BIN",
                 )
             if compression["状态"] == "超出限制":
-                add_warning(
+                add_failure(
                     report,
                     "PNG压缩后仍超过大小限制",
                     文件=str(target),

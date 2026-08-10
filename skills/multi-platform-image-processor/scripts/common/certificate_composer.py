@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import logging
 import re
 from pathlib import Path
@@ -30,10 +31,32 @@ def fit_contain(image: Image.Image, maximum: tuple[int, int]) -> Image.Image:
     return copy
 
 
-def _save_jpeg(canvas: Image.Image, output: Path) -> Path:
+def save_business_jpeg(canvas: Image.Image, output: Path, max_bytes: int = 500 * 1024) -> Path:
+    """将固定画布保存为符合业务大小限制的 JPG。
+
+    参数：
+        canvas：需要保存的完整业务图片画布。
+        output：固定输出文件路径。
+        max_bytes：允许的最大文件字节数。
+    返回值：
+        符合大小限制的 JPG 路径。
+    """
     ensure_dir(output.parent)
-    canvas.convert("RGB").save(output, "JPEG", quality=95, optimize=True)
-    return output
+    rgb = canvas.convert("RGB")
+    for quality in list(range(95, 9, -5)) + [5]:
+        buffer = io.BytesIO()
+        rgb.save(buffer, "JPEG", quality=quality, optimize=True, progressive=True)
+        data = buffer.getvalue()
+        if len(data) <= max_bytes:
+            output.write_bytes(data)
+            logger.info(
+                "业务图片保存完成 output=%r quality=%d size_kb=%.2f",
+                str(output),
+                quality,
+                len(data) / 1024,
+            )
+            return output
+    raise RuntimeError(f"业务图片无法压缩到 {max_bytes / 1024:.0f}KB：{output}")
 
 
 def compose_certificate(
@@ -100,7 +123,7 @@ def compose_certificate(
     position = ((750 - fitted.width) // 2, (1600 - fitted.height) // 2)
     canvas.paste(fitted, position)
     logger.info("合格证图生成完成 output=%r", str(output))
-    return _save_jpeg(canvas, output)
+    return save_business_jpeg(canvas, output)
 
 
 def compose_hangtag(exported_image: Path, output: Path) -> Path:
@@ -117,4 +140,4 @@ def compose_hangtag(exported_image: Path, output: Path) -> Path:
     canvas = Image.new("RGB", (800, 800), (255, 255, 255))
     canvas.paste(subject, ((800 - subject.width) // 2, (800 - subject.height) // 2))
     logger.info("吊牌图生成完成 output=%r", str(output))
-    return _save_jpeg(canvas, output)
+    return save_business_jpeg(canvas, output)

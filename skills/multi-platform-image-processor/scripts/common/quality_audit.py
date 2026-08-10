@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
-from .utils import list_images, image_info, add_warning, 平台目录名
+from .utils import list_images, image_info, add_failure, add_warning, 平台目录名
 
 
 def run_quality_audit(
@@ -42,7 +41,7 @@ def run_quality_audit(
 
 def _check_file_size(path: Path, max_kb: int, report: dict) -> None:
     if path.exists() and path.stat().st_size > max_kb * 1024:
-        add_warning(report, "文件大小超过平台限制", 文件=str(path), 限制KB=max_kb, 实际KB=round(path.stat().st_size / 1024, 2))
+        add_failure(report, "文件大小超过平台限制", 文件=str(path), 限制KB=max_kb, 实际KB=round(path.stat().st_size / 1024, 2))
 
 
 def _check_dimensions(path: Path, width: int | None, height: int | None, report: dict, message: str) -> None:

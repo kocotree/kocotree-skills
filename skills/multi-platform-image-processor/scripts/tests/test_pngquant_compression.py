@@ -139,6 +139,36 @@ class PngquantCompressionTests(unittest.TestCase):
             self.assertEqual(detail_record["处理结果"], "部分失败")
             self.assertEqual(len(main_report["失败项"]), 1)
 
+    def test_png_over_limit_is_delivery_failure(self) -> None:
+        """验证 PNG 有效压缩结果仍超限时记录失败项。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            report = new_report(root, None, root / "输出", "tmall")
+            compression = {
+                "状态": "超出限制",
+                "尝试次数": 2,
+                "退出码": 0,
+                "输入大小KB": 600.0,
+                "输出大小KB": 520.0,
+                "限制KB": 500.0,
+            }
+            with patch(
+                "common.image_resize_compress.find_pngquant",
+                return_value="/fake/pngquant",
+            ), patch(
+                "common.image_resize_compress.compress_pngquant_under_limit",
+                return_value=compression,
+            ):
+                save_png_under(
+                    Image.new("RGBA", (10, 10), (255, 0, 0, 128)),
+                    root / "output.png",
+                    500 * 1024,
+                    report,
+                )
+
+            self.assertEqual(report["图片记录"][0]["处理结果"], "失败")
+            self.assertTrue(any("PNG压缩后仍超过" in item["信息"] for item in report["失败项"]))
+
 
 if __name__ == "__main__":
     unittest.main()

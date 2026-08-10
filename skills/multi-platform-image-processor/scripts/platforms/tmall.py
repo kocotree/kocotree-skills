@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from common import ensure_dir, copy_file_original, add_failure, add_review_suggestion
+from common import add_failure, add_review_suggestion, ensure_dir
 from common.detail_page_slice import generate_sequential_detail_pages, prepare_ordered_detail_sources
 from common.image_resize_compress import process_jpg_original_or_compress, process_png_original_or_compress
 from common.scan_source_pack import 源目录规则, get_image_group, get_sku800, get_sku1440

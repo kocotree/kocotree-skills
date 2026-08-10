@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from common import list_images, ensure_dir
+from common import ensure_dir
 from common.detail_page_slice import scale_detail_pages_from_master
 from common.image_resize_compress import process_jpg_original_or_compress
 from common.scan_source_pack import get_image_group

@@ -74,6 +74,25 @@ class WorkflowReportTests(unittest.TestCase):
             self.assertTrue(audit_business_images(root, report, require_all=True))
             self.assertFalse(report["失败项"])
 
+    def test_delivery_audit_rejects_business_image_over_500kb(self) -> None:
+        """验证业务图片超过 500KB 时记录失败项。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            assets = {
+                root / "合格证" / "合格证图.jpg": (750, 1600),
+                root / "吊牌图" / "吊牌图.jpg": (800, 800),
+                root / "尺码图" / "尺码图.jpg": (800, 800),
+            }
+            for path, size in assets.items():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                Image.new("RGB", size, "white").save(path, "JPEG")
+            oversized = root / "合格证" / "合格证图.jpg"
+            oversized.write_bytes(oversized.read_bytes() + b"0" * (501 * 1024))
+            report = new_workflow_report("certificate", root, root)
+
+            self.assertFalse(audit_business_images(root, report, require_all=True))
+            self.assertTrue(any("超过500KB" in item["信息"] for item in report["失败项"]))
+
 
 class MaterialPlanTests(unittest.TestCase):
     """验证 Agent 视觉计划驱动局部面料修正。"""

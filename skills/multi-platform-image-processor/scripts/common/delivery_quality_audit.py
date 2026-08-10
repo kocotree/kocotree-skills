@@ -15,6 +15,7 @@ EXPECTED_ASSETS = {
     "吊牌图": ("吊牌图/吊牌图.jpg", (800, 800)),
     "尺码图": ("尺码图/尺码图.jpg", (800, 800)),
 }
+BUSINESS_IMAGE_MAX_BYTES = 500 * 1024
 
 
 def _corners_are_white(image: Image.Image, threshold: int = 242) -> bool:
@@ -55,6 +56,16 @@ def audit_business_images(
             report["业务图片"].setdefault(name, {})["自动质检"] = "存在问题"
             continue
         try:
+            if path.stat().st_size > BUSINESS_IMAGE_MAX_BYTES:
+                add_report_item(
+                    report,
+                    "失败项",
+                    f"{name}文件大小超过500KB",
+                    文件=str(path),
+                    实际KB=round(path.stat().st_size / 1024, 2),
+                )
+                passed = False
+                item_passed = False
             with Image.open(path) as image:
                 if image.size != expected_size:
                     add_report_item(

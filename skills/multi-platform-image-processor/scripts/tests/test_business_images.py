@@ -105,6 +105,8 @@ class BusinessImageComposerTests(unittest.TestCase):
             with Image.open(hangtag) as image:
                 self.assertEqual(image.size, (800, 800))
                 self.assertGreater(min(image.getpixel((0, 0))), 245)
+            self.assertLessEqual(certificate.stat().st_size, 500 * 1024)
+            self.assertLessEqual(hangtag.stat().st_size, 500 * 1024)
 
     def test_size_table_crop_and_size_image_are_complete(self) -> None:
         """验证显式裁切保留表格底边并生成 800×800 尺码图。"""
@@ -129,6 +131,7 @@ class BusinessImageComposerTests(unittest.TestCase):
             result = compose_size_image(certificate, table, root / "尺码图" / "尺码图.jpg")
             with Image.open(result) as image:
                 self.assertEqual(image.size, (800, 800))
+            self.assertLessEqual(result.stat().st_size, 500 * 1024)
 
 
 class MaterialProcessingTests(unittest.TestCase):

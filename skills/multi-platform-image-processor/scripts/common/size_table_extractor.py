@@ -6,8 +6,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from .certificate_composer import fit_contain, trim_white
-from .utils import ensure_dir
+from .certificate_composer import fit_contain, save_business_jpeg, trim_white
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +70,5 @@ def compose_size_image(certificate_image: Path, size_table: Path, output: Path) 
     top = max(20, (800 - total_height) // 2)
     canvas.paste(certificate, ((800 - certificate.width) // 2, top))
     canvas.paste(table, ((800 - table.width) // 2, top + certificate.height + gap))
-    ensure_dir(output.parent)
-    canvas.save(output, "JPEG", quality=95, optimize=True)
     logger.info("尺码图生成完成 output=%r", str(output))
-    return output
+    return save_business_jpeg(canvas, output)
