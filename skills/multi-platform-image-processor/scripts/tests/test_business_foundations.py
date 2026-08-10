@@ -24,7 +24,7 @@ from common.product_matcher import (
 )
 from common.settings import resolve_business_paths
 from common.source_normalizer import create_local_copy, detect_source_kind
-from common.utils import build_platform_directory_names
+from common.utils import build_platform_directory_names, 平台模板目录名
 
 
 class BusinessSettingsTests(unittest.TestCase):
@@ -75,6 +75,13 @@ class BusinessSettingsTests(unittest.TestCase):
         names = build_platform_directory_names("P100", "儿童外套")
 
         self.assertEqual(names["jd"], "P100 儿童外套-京东")
+
+    def test_jd_template_uses_product_identity_placeholder(self) -> None:
+        """验证京东静态模板使用产品身份占位目录名。"""
+        self.assertEqual(平台模板目录名["jd"], "产品货号 产品名称-京东")
+        template_root = Path(__file__).resolve().parents[2] / "template"
+        self.assertTrue((template_root / 平台模板目录名["jd"]).is_dir())
+        self.assertFalse((template_root / "京东").exists())
 
 
 class ProductInfoTests(unittest.TestCase):

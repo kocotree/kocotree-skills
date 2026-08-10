@@ -13,7 +13,7 @@ from common import (
     ensure_dir,
     new_report,
     全部平台,
-    平台目录名,
+    平台模板目录名,
 )
 from common.quality_audit import run_quality_audit
 from common.run_logging import (
@@ -150,7 +150,7 @@ def run_single(
             for key in 全部平台
         }
         for key in 全部平台:
-            copy_template_empty_dirs(template, 平台目录名[key], platform_directories[key])
+            copy_template_empty_dirs(template, 平台模板目录名[key], platform_directories[key])
 
         tmall_dir = build_tmall(source, output, report, detail_plan)
         derive_cbme(source, tmall_dir, output, report)

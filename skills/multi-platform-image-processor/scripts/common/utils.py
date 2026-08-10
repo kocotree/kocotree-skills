@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
     "offsite": "站外通用版",
 }
 
+平台模板目录名 = {
+    **平台目录名,
+    "jd": "产品货号 产品名称-京东",
+}
+
 全部平台 = list(平台目录名)
 
 
