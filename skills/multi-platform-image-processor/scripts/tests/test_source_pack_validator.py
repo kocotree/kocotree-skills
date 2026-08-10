@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from PIL import Image, ImageDraw
 
-from common.detail_page_slice import collect_detail_sources
+from common.detail_page_slice import collect_detail_sources, prepare_ordered_detail_sources
 from common.source_pack_validator import validate_source_pack
 from workflows.platform_processing import run_single
 
@@ -316,6 +316,60 @@ class SourcePackValidatorTests(unittest.TestCase):
             self.assertTrue(
                 any("上/下目录必须分别包含图片" in item["信息"] for item in result["问题"])
             )
+
+    def test_detail_plan_reorders_required_modules_and_splits_joined_image(self) -> None:
+        """验证详情计划按固定模块顺序输出并水平拆分连体图。"""
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "数据包"
+            static = root / "详情" / "静态"
+            for name in ("01.jpg", "02.jpg", "04.jpg", "05.jpg"):
+                create_rgb(static / name, (790, 120))
+            create_rgb(static / "03.jpg", (790, 200))
+            plan_path = Path(temp_dir) / "detail-plan.json"
+            plan_path.write_text(
+                json.dumps(
+                    {
+                        "详情模块": [
+                            {"类型": "尺码表", "图片": "详情/静态/05.jpg"},
+                            {"类型": "图标说明", "图片": "详情/静态/03.jpg", "区域": [0, 100, 790, 200]},
+                            {"类型": "品牌背书", "图片": "详情/静态/01.jpg"},
+                            {"类型": "产品信息", "图片": "详情/静态/04.jpg"},
+                            {"类型": "KV", "图片": "详情/静态/02.jpg"},
+                            {"类型": "适用图标", "图片": "详情/静态/03.jpg", "区域": [0, 0, 790, 100]},
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            report: dict = {}
+
+            outputs = prepare_ordered_detail_sources(root, plan_path, Path(temp_dir) / "staging", report)
+
+            self.assertEqual(
+                [item["类型"] for item in report["详情页模块"]["模块顺序"]],
+                ["品牌背书", "KV", "适用图标", "产品信息", "尺码表", "图标说明"],
+            )
+            with Image.open(outputs[2]) as icon, Image.open(outputs[5]) as explanation:
+                self.assertEqual(icon.size, (790, 100))
+                self.assertEqual(explanation.size, (790, 100))
+
+    def test_detail_plan_requires_every_business_module(self) -> None:
+        """验证详情计划缺少必需模块时停止处理。"""
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "数据包"
+            create_rgb(root / "详情" / "静态" / "01.jpg", (790, 120))
+            plan_path = Path(temp_dir) / "detail-plan.json"
+            plan_path.write_text(
+                json.dumps(
+                    {"详情模块": [{"类型": "KV", "图片": "详情/静态/01.jpg"}]},
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "缺少必需模块"):
+                prepare_ordered_detail_sources(root, plan_path, Path(temp_dir) / "staging", {})
 
     def test_main_flow_stops_before_creating_platform_output(self) -> None:
         with TemporaryDirectory() as temp_dir:

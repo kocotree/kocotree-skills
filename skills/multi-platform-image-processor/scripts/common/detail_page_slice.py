@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import math
 from pathlib import Path
@@ -11,6 +12,23 @@ from .image_resize_compress import open_image, save_jpg_under
 
 
 logger = logging.getLogger(__name__)
+
+详情模块顺序 = {
+    "品牌背书": 1,
+    "KV": 2,
+    "适用图标": 3,
+    "产品信息": 4,
+    "尺码表": 5,
+    "图标说明": 6,
+    "卖点": 7,
+    "面料": 7,
+    "认证": 7,
+    "模特": 7,
+    "品牌故事": 7,
+    "店铺": 7,
+    "其他": 7,
+}
+必需详情模块 = ("品牌背书", "KV", "适用图标", "产品信息", "尺码表", "图标说明")
 
 
 def collect_detail_sources(source_root: Path) -> list[Path]:
@@ -84,6 +102,125 @@ def collect_detail_sources(source_root: Path) -> list[Path]:
         },
     )
     raise ValueError("详情页必须使用平铺结构或完整且非空的上/下结构")
+
+
+def prepare_ordered_detail_sources(
+    source_root: Path,
+    plan_path: Path,
+    staging_dir: Path,
+    report: dict,
+) -> list[Path]:
+    """根据 Agent 视觉计划校验、拆分并排序详情页模块。
+
+    参数：
+        source_root：数据包根目录。
+        plan_path：Agent 生成的详情页模块 JSON 计划路径。
+        staging_dir：需要拆分的模块临时输出目录。
+        report：用于记录模块顺序和校验结果的报告。
+    返回值：
+        按业务顺序排列的原图或水平拆分图路径。
+    """
+    if not plan_path.is_file():
+        raise RuntimeError("缺少 Agent 详情页模块计划")
+    try:
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"详情页模块计划无法读取：{exc}") from exc
+    modules = plan.get("详情模块")
+    if not isinstance(modules, list) or not modules:
+        raise RuntimeError("详情页模块计划缺少“详情模块”列表")
+
+    source_paths = collect_detail_sources(source_root)
+    source_lookup = {path.resolve(): path for path in source_paths}
+    parsed: list[dict] = []
+    represented: dict[Path, list[tuple[int, int, int, int] | None]] = {}
+    for index, item in enumerate(modules):
+        if not isinstance(item, dict):
+            raise RuntimeError(f"详情模块第 {index + 1} 项格式错误")
+        module_type = str(item.get("类型", "")).strip()
+        if module_type not in 详情模块顺序:
+            raise RuntimeError(f"详情模块类型不受支持：{module_type or '空值'}")
+        image_value = str(item.get("图片", "")).strip()
+        candidate = Path(image_value)
+        candidate = candidate if candidate.is_absolute() else source_root / candidate
+        source = source_lookup.get(candidate.resolve())
+        if source is None:
+            raise RuntimeError(f"详情模块图片不在已验证的详情页源图中：{image_value}")
+        box = _parse_module_box(item.get("区域"), source)
+        represented.setdefault(source.resolve(), []).append(box)
+        parsed.append({"类型": module_type, "源图": source, "区域": box, "原顺序": index})
+
+    missing_sources = [str(path) for path in source_paths if path.resolve() not in represented]
+    if missing_sources:
+        raise RuntimeError(f"详情页模块计划未覆盖全部源图：{missing_sources}")
+    for source in source_paths:
+        _validate_source_coverage(source, represented[source.resolve()])
+
+    present_types = {item["类型"] for item in parsed}
+    missing_types = [name for name in 必需详情模块 if name not in present_types]
+    if missing_types:
+        raise RuntimeError(f"详情页缺少必需模块：{missing_types}")
+
+    ordered = sorted(parsed, key=lambda item: (详情模块顺序[item["类型"]], item["原顺序"]))
+    ensure_dir(staging_dir)
+    outputs: list[Path] = []
+    sequence: list[dict] = []
+    for index, item in enumerate(ordered, start=1):
+        source = item["源图"]
+        box = item["区域"]
+        output = source
+        if box is not None:
+            with Image.open(source) as image:
+                output = staging_dir / f"{index:03d}.png"
+                image.crop(box).save(output, "PNG")
+        outputs.append(output)
+        sequence.append(
+            {
+                "顺序": index,
+                "类型": item["类型"],
+                "源图": str(source),
+                "区域": list(box) if box is not None else [],
+            }
+        )
+    report["详情页模块"] = {"计划路径": str(plan_path), "模块顺序": sequence}
+    logger.info(
+        "详情页模块准备完成 source_count=%d module_count=%d",
+        len(source_paths),
+        len(outputs),
+        extra={"stage": "详情页", "event": "模块排序", "status": "success"},
+    )
+    return outputs
+
+
+def _parse_module_box(value: object, source: Path) -> tuple[int, int, int, int] | None:
+    """解析水平模块裁切区域。"""
+    if value in (None, [], ""):
+        return None
+    if not isinstance(value, list) or len(value) != 4 or not all(isinstance(item, int) for item in value):
+        raise RuntimeError(f"详情模块区域必须是四个整数：{source}")
+    left, top, right, bottom = value
+    with Image.open(source) as image:
+        if left != 0 or right != image.width or not (0 <= top < bottom <= image.height):
+            raise RuntimeError(f"详情模块只支持保留原宽的水平拆分：{source}")
+    return left, top, right, bottom
+
+
+def _validate_source_coverage(source: Path, boxes: list[tuple[int, int, int, int] | None]) -> None:
+    """验证单张详情源图在模块计划中完整且不重叠。"""
+    if boxes == [None]:
+        return
+    if not boxes or any(box is None for box in boxes):
+        raise RuntimeError(f"详情源图不能同时使用整图和分段：{source}")
+    ordered = sorted((box for box in boxes if box is not None), key=lambda box: box[1])
+    with Image.open(source) as image:
+        expected_top = 0
+        for box in ordered:
+            assert box is not None
+            if box[1] != expected_top:
+                raise RuntimeError(f"详情源图分段存在缺失或重叠：{source}")
+            expected_top = box[3]
+        if expected_top != image.height:
+            raise RuntimeError(f"详情源图分段未覆盖到底部：{source}")
 
 
 def generate_sequential_detail_pages(

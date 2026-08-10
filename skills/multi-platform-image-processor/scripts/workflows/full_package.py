@@ -85,6 +85,8 @@ def run_full_workflow(args: Any) -> int:
 
         platform_report_path = report_path.with_name(f"{report_path.stem}-platform-report.json")
         template = default_template_path()
+        detail_plan_value = getattr(args, "detail_plan", "")
+        detail_plan = Path(detail_plan_value).expanduser().resolve() if detail_plan_value else None
         platform_code, product_output, actual_platform_report = run_single(
             working_copy.working_copy,
             template,
@@ -92,6 +94,7 @@ def run_full_workflow(args: Any) -> int:
             platform_report_path,
             product_code=confirmed_product_code,
             product_name=confirmed_product_name,
+            detail_plan=detail_plan,
         )
         platform_report = json.loads(actual_platform_report.read_text(encoding="utf-8"))
         merge_platform_report(report, platform_report, actual_platform_report)
