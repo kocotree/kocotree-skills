@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw
 
 from common.detail_page_slice import collect_detail_sources
 from common.source_pack_validator import validate_source_pack
-from main import run_single
+from workflows.platform_processing import run_single
 
 
 def create_rgb(path: Path, size: tuple[int, int] = (16, 12)) -> None:
@@ -326,8 +326,8 @@ class SourcePackValidatorTests(unittest.TestCase):
             output_root = temp_root / "输出"
             report_path = temp_root / "检测报告.json"
 
-            with patch("main.default_report_path", return_value=report_path):
-                code = run_single(
+            with patch("workflows.platform_processing.default_report_path", return_value=report_path):
+                code, _, _ = run_single(
                     source,
                     temp_root / "模板",
                     output_root,

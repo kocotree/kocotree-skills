@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Iterator
@@ -8,7 +9,8 @@ from typing import Any, Iterable, Iterator
 from openpyxl import load_workbook
 import xlrd
 
-from .product_matcher import MatchResult, normalize_identity
+from .nas_paths import list_files_fast
+from .product_matcher import MatchResult, contains_exact_code, normalize_identity
 
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,25 @@ class ProductInfoRecord:
     def get(self, field: str, default: Any = "") -> Any:
         """按规范字段名返回单元格值。"""
         return self.data.get(field, default)
+
+
+def extract_chinese_material(value: object) -> str:
+    """从可能包含双语的单元格中提取中文面料原文。
+
+    参数：
+        value：产品信息单元格原始值。
+    返回值：
+        英文面料段之前的中文行，保持中文内容和换行顺序。
+    """
+    chinese_lines: list[str] = []
+    for raw_line in str(value or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = raw_line.strip()
+        if not line:
+            continue
+        if re.search(r"[A-Za-z]", line):
+            break
+        chinese_lines.append(line)
+    return "\n".join(chinese_lines).strip()
 
 
 def canonical_header(value: object, aliases: dict[str, set[str]]) -> str:
@@ -127,22 +148,45 @@ def find_product_info(
     matches: list[ProductInfoRecord] = []
     target_code = normalize_identity(product_code)
     target_name = normalize_identity(product_name)
-    for path in sorted(root.rglob("*")):
-        if path.suffix.lower() not in EXCEL_SUFFIXES or path.name.startswith("~$"):
-            continue
-        try:
-            records = read_product_records(path)
-        except Exception as exc:
-            logger.warning("产品信息文件读取失败 file=%r error=%s", str(path), exc)
-            continue
-        for record in records:
-            if normalize_identity(record.get("产品货号")) != target_code:
+    named_files = [
+        path for path in list_files_fast(root, EXCEL_SUFFIXES, product_code)
+        if not path.name.startswith("~$")
+        if contains_exact_code(str(path.relative_to(root)), product_code)
+    ]
+    if not named_files and product_name:
+        named_files = [
+            path for path in list_files_fast(root, EXCEL_SUFFIXES, product_name)
+            if not path.name.startswith("~$")
+        ]
+    logger.info(
+        "开始匹配产品信息 code=%s filename_matches=%d",
+        product_code,
+        len(named_files),
+    )
+    scan_groups = [named_files]
+    for group_index, group in enumerate(scan_groups):
+        for path in group:
+            try:
+                records = read_product_records(path)
+            except Exception as exc:
+                logger.warning("产品信息文件读取失败 file=%r error=%s", str(path), exc)
                 continue
-            if target_name:
-                record_name = normalize_identity(record.get("产品名称"))
-                if record_name and target_name != record_name:
+            for record in records:
+                if normalize_identity(record.get("产品货号")) != target_code:
                     continue
-            matches.append(record)
+                if target_name:
+                    record_name = normalize_identity(record.get("产品名称"))
+                    if record_name and target_name != record_name:
+                        continue
+                matches.append(record)
+        if matches:
+            break
+        if group_index == 0:
+            fallback = [
+                path for path in list_files_fast(root, EXCEL_SUFFIXES)
+                if not path.name.startswith("~$") and path not in named_files
+            ]
+            scan_groups.append(fallback)
     if len(matches) == 1:
         return MatchResult(matches[0], list(matches), "产品信息记录唯一")
     if not matches:

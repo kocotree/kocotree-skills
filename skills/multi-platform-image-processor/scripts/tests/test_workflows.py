@@ -1,0 +1,211 @@
+from __future__ import annotations
+
+import json
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+
+from PIL import Image
+
+import main as main_module
+from common.delivery_quality_audit import audit_business_images
+from common.product_info_reader import ProductInfoRecord
+from common.product_matcher import MatchResult
+from common.source_normalizer import SourceCopy
+from common.workflow_report import new_workflow_report, write_workflow_report
+from workflows.full_package import run_full_workflow
+from workflows.material_correction import apply_material_plan
+
+
+class UnifiedEntryTests(unittest.TestCase):
+    """验证统一入口的四种模式和兼容行为。"""
+
+    def test_business_mode_requires_product_code(self) -> None:
+        """验证业务模式缺少货号时由参数解析器阻断。"""
+        with self.assertRaises(SystemExit):
+            main_module.parse_args(["--mode", "full", "--source", "产品"])
+
+    def test_main_routes_each_mode(self) -> None:
+        """验证统一入口将四种模式路由到独立工作流。"""
+        cases = [
+            ("platform", []),
+            ("full", ["--product-code", "KQ26143"]),
+            ("certificate", ["--product-code", "KQ26143"]),
+            ("material", ["--product-code", "KQ26143"]),
+        ]
+        for mode, extra in cases:
+            with self.subTest(mode=mode), patch(
+                "main.configure_runtime_environment",
+            ), patch("main.ensure_token"), patch.dict(
+                main_module.__dict__,
+                {
+                    "run_platform_workflow": lambda args: 0,
+                    "run_full_workflow": lambda args: 0,
+                    "run_certificate_workflow": lambda args: 0,
+                    "run_material_workflow": lambda args: 0,
+                },
+            ):
+                code = main_module.main(["--mode", mode, "--source", "产品", *extra])
+            self.assertEqual(code, 0)
+
+
+class WorkflowReportTests(unittest.TestCase):
+    """验证业务顶层报告和业务图片自动质检。"""
+
+    def test_report_status_reflects_review_and_failures(self) -> None:
+        """验证完成状态由失败项和复核项决定。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            report = new_workflow_report("certificate", root, root)
+            report["Agent复核建议"].append({"任务名称": "视觉复核"})
+            path = write_workflow_report(report, root / "report.json")
+            data = json.loads(path.read_text(encoding="utf-8"))
+
+            self.assertEqual(data["工作流"]["完成状态"], "部分完成")
+            self.assertEqual(data["汇总"]["Agent复核建议数"], 1)
+
+    def test_delivery_audit_checks_fixed_sizes(self) -> None:
+        """验证三张业务图片的固定路径和尺寸。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            assets = {
+                root / "合格证" / "合格证图.jpg": (750, 1600),
+                root / "吊牌图" / "吊牌图.jpg": (800, 800),
+                root / "尺码图" / "尺码图.jpg": (800, 800),
+            }
+            for path, size in assets.items():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                Image.new("RGB", size, "white").save(path, "JPEG")
+            report = new_workflow_report("certificate", root, root)
+
+            self.assertTrue(audit_business_images(root, report, require_all=True))
+            self.assertFalse(report["失败项"])
+
+
+class MaterialPlanTests(unittest.TestCase):
+    """验证 Agent 视觉计划驱动局部面料修正。"""
+
+    def test_material_plan_updates_relative_image(self) -> None:
+        """验证相对路径计划完成内容比较和局部重绘。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            detail = root / "数据包" / "详情" / "静态" / "601.png"
+            detail.parent.mkdir(parents=True)
+            Image.new("RGB", (900, 300), (245, 245, 245)).save(detail)
+            plan = root / "plan.json"
+            plan.write_text(
+                json.dumps(
+                    {
+                        "面料区域": [
+                            {
+                                "图片": "数据包/详情/静态/601.png",
+                                "识别原文": "棉90%氨纶10%",
+                                "区域": [100, 80, 800, 180],
+                                "字号": 36,
+                                "颜色": [20, 20, 20],
+                                "背景色": [245, 245, 245],
+                                "内边距": [10, 15],
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            report = new_workflow_report("material", root, root)
+
+            result = apply_material_plan(root, "棉95%氨纶5%", plan, report)
+
+            self.assertTrue(result)
+            self.assertFalse(report["失败项"])
+            self.assertTrue(report["面料检查"]["检查项"][0]["已修改"])
+
+
+class FullWorkflowTests(unittest.TestCase):
+    """验证完整流程按面料、平台、业务图片顺序编排。"""
+
+    def test_full_workflow_orchestrates_all_layers(self) -> None:
+        """验证完整流程汇总平台子报告并清理成功的临时副本。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            source = root / "产品" / "数据包"
+            source.mkdir(parents=True)
+            output = root / "输出"
+            report_path = root / "full-report.json"
+            platform_report = root / "platform-report.json"
+            platform_report.write_text(
+                json.dumps(
+                    {
+                        "处理配置": {"输出目录": str(output / "产品")},
+                        "汇总": {},
+                        "警告": [],
+                        "风险": [],
+                        "失败项": [],
+                        "Agent复核建议": [],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            record = ProductInfoRecord(
+                root / "KQ26143.xlsx",
+                "产品资料",
+                2,
+                {"产品货号": "KQ26143", "产品名称": "儿童长裤", "中文面料": "棉95%氨纶5%"},
+            )
+            working = SourceCopy(source, root / "working" / "数据包", "data-pack")
+            working.working_copy.mkdir(parents=True)
+            args = SimpleNamespace(
+                source=str(source),
+                output=str(output),
+                report=str(report_path),
+                product_code="KQ26143",
+                product_name="儿童长裤",
+                nas_root="",
+                product_info_root="",
+                certificate_root="",
+                material_plan="plan.json",
+                template="",
+                platform="all",
+                include_certificate_assets=True,
+            )
+            with patch("workflows.full_package.resolve_business_paths") as resolve_paths, patch(
+                "workflows.full_package.require_accessible_directory",
+                side_effect=[root, root],
+            ), patch(
+                "workflows.full_package.find_product_info",
+                return_value=MatchResult(record, [record], "唯一"),
+            ), patch(
+                "workflows.full_package.create_local_copy",
+                return_value=working,
+            ), patch(
+                "workflows.full_package.apply_material_plan",
+                return_value=True,
+            ) as material, patch(
+                "workflows.full_package.run_single",
+                return_value=(0, output / "产品", platform_report),
+            ) as platform, patch(
+                "workflows.full_package.generate_business_images",
+                return_value=True,
+            ) as business, patch(
+                "workflows.full_package.cleanup_local_copy",
+                return_value=True,
+            ) as cleanup:
+                resolve_paths.return_value.product_info_root = root
+                resolve_paths.return_value.certificate_root = root
+                code = run_full_workflow(args)
+
+            self.assertEqual(code, 0)
+            material.assert_called_once()
+            platform.assert_called_once()
+            business.assert_called_once()
+            cleanup.assert_called_once_with(working)
+            data = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(data["工作流"]["完成状态"], "完成")
+            self.assertEqual(data["平台子报告"]["报告路径"], str(platform_report))
+
+
+if __name__ == "__main__":
+    unittest.main()

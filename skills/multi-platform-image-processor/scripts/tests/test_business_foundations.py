@@ -12,8 +12,8 @@ import xlwt
 
 from common.font_assets import load_font_assets, require_glyphs
 from common.nas_paths import require_accessible_directory, to_unc_path
-from common.product_info_reader import find_product_info, read_product_records
-from common.product_matcher import select_representative_size, select_unique
+from common.product_info_reader import extract_chinese_material, find_product_info, read_product_records
+from common.product_matcher import select_bartender_file, select_representative_size, select_unique
 from common.settings import resolve_business_paths
 from common.source_normalizer import create_local_copy, create_modified_copy, detect_source_kind
 
@@ -117,6 +117,12 @@ class ProductInfoTests(unittest.TestCase):
             self.assertEqual(len(result.candidates), 2)
             self.assertIn("多个", result.reason)
 
+    def test_bilingual_cell_returns_only_chinese_material(self) -> None:
+        """验证中英文同单元格时只提取英文段之前的中文原文。"""
+        value = "成分：98.3%聚酯纤维\n1.7%氨纶\ncomponent:98.3%polyester\n1.7%spandex"
+
+        self.assertEqual(extract_chinese_material(value), "成分：98.3%聚酯纤维\n1.7%氨纶")
+
 
 class ProductMatcherTests(unittest.TestCase):
     """验证货号边界和代表尺码选择。"""
@@ -142,6 +148,17 @@ class ProductMatcherTests(unittest.TestCase):
         self.assertEqual(preferred.selected.name, "KQ26143-蓝色-110.btw")
         self.assertEqual(fallback.selected.name, "KQ26143-蓝色-100.btw")
         self.assertIn("最小尺码 100", fallback.reason)
+
+    def test_bartender_product_name_mismatch_is_blocked(self) -> None:
+        """验证 BarTender 货号候选与产品名称不一致时停止选择。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            (root / "KQ26143-儿童长裤-110.btw").write_bytes(b"btw")
+
+            result = select_bartender_file(root, "KQ26143", "儿童外套")
+
+            self.assertIsNone(result.selected)
+            self.assertIn("名称不一致", result.reason)
 
 
 class SourceAndFontTests(unittest.TestCase):

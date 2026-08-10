@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -43,11 +44,19 @@ def find_bartender_resources(root: Path | None = None) -> tuple[Path, Path]:
     返回值：
         BarTender 可执行文件和 SDK 程序集路径。
     """
-    install_root = root or DEFAULT_BARTENDER_ROOT
+    configured = os.environ.get("BARTENDER_ROOT", "").strip()
+    install_root = root or (Path(configured) if configured else DEFAULT_BARTENDER_ROOT)
     executable = install_root / "BarTend.exe"
     assembly = install_root / "SDK" / "Assemblies" / "Seagull.BarTender.Print.dll"
     if not executable.is_file():
-        raise RuntimeError(f"BarTender 程序缺失：{executable}")
+        program_files = Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
+        candidates = sorted(program_files.glob("Seagull/BarTender */BarTend.exe"), reverse=True)
+        if candidates and root is None and not configured:
+            install_root = candidates[0].parent
+            executable = candidates[0]
+            assembly = install_root / "SDK" / "Assemblies" / "Seagull.BarTender.Print.dll"
+        else:
+            raise RuntimeError(f"BarTender 程序缺失：{executable}")
     if not assembly.is_file():
         raise RuntimeError(f"BarTender Print SDK 缺失：{assembly}")
     return executable, assembly

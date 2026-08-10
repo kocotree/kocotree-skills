@@ -10,6 +10,10 @@ from auth.auth_client import ensure_token
 from common.environment import save_environment_state
 from common.image_resize_compress import find_pngquant
 from common.text_removal import initialize_text2image
+from common.bartender_exporter import find_bartender_resources
+from common.font_assets import load_font_assets
+from common.nas_paths import require_accessible_directory, to_unc_path
+from common.settings import resolve_business_paths
 
 
 logger = logging.getLogger(__name__)
@@ -119,6 +123,33 @@ def validate_pngquant() -> Path:
         installed.update(missing)
 
 
+def validate_business_environment() -> dict[str, str]:
+    """校验字体、Excel 依赖、BarTender 和 NAS 业务资源。
+
+    返回值：
+        各业务资源的检查结果；NAS 当前不可访问时记录警告并保留状态。
+    """
+    fonts = load_font_assets()
+    status = {"字体": f"{len(fonts)} 个角色可用", "Excel": "xlsx/xls/xlsm 可用"}
+    if sys.platform != "win32":
+        status["BarTender"] = "当前系统不支持"
+        status["NAS"] = "当前系统未检查 Windows 共享目录"
+        logger.warning("当前系统不是 Windows，合格证专项需要在安装 BarTender 的 Windows 执行")
+        return status
+    executable, _ = find_bartender_resources()
+    status["BarTender"] = str(executable)
+    paths = resolve_business_paths()
+    try:
+        require_accessible_directory(to_unc_path(paths.product_info_root), "产品信息目录")
+        require_accessible_directory(to_unc_path(paths.certificate_root), "BarTender 合格证目录")
+        status["NAS"] = "业务目录可访问"
+    except RuntimeError as exc:
+        status["NAS"] = str(exc)
+        logger.warning("NAS 业务目录检查未通过：%s", exc)
+    logger.info("业务环境检查完成：%s", status)
+    return status
+
+
 def initialize_environment() -> Path:
     """初始化图片处理所需的本地环境和飞书认证。
 
@@ -138,6 +169,8 @@ def initialize_environment() -> Path:
     if text2image is None:
         raise RuntimeError(message)
     logger.info("text2image初始化完成：%s", text2image)
+
+    validate_business_environment()
 
     state_path = save_environment_state(pngquant, text2image)
     logger.info("环境状态写入完成：%s", state_path)

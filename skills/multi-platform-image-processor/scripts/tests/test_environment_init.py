@@ -137,6 +137,8 @@ class EnvironmentInitializationTests(unittest.TestCase):
             ), patch(
                 "init.initialize_text2image",
                 return_value=(text2image, "完成"),
+            ), patch(
+                "init.validate_business_environment",
             ), patch("init.ensure_token") as ensure_token, patch(
                 "init.save_environment_state",
                 return_value=state_path,
@@ -160,6 +162,8 @@ class EnvironmentInitializationTests(unittest.TestCase):
             ), patch(
                 "init.initialize_text2image",
                 return_value=(text2image, "完成"),
+            ), patch(
+                "init.validate_business_environment",
             ), patch(
                 "init.save_environment_state",
                 return_value=state_path,

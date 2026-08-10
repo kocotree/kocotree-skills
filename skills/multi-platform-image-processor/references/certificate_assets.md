@@ -45,3 +45,5 @@
 - 保留完整表头、全部行列、底部尺码行和左右边界，在内容完整的前提下尽量放大。
 
 找不到 BarTender 文件、实际尺码表或无法保证表格完整时，将对应图片写入失败项，不生成占位图。
+
+Agent 确认详情图后，通过 `--size-table-source` 提供图片路径，通过 `--size-table-box left,top,right,bottom` 提供排除标题和灰框后的完整表格坐标。合格证加入面料时，通过 `--fabric-anchor x,y` 提供“等级”字段下方的左对齐锚点。三张图生成后以原始尺寸完成视觉复核，再使用 `--visual-review-approved` 记录复核结论。

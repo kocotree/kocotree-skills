@@ -3,320 +3,90 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from datetime import datetime
-from pathlib import Path
 
 from auth.auth_client import ensure_token
-from common import (
-    全部平台,
-    平台目录名,
-    copy_template_empty_dirs,
-    new_report,
-    add_platform_result,
-    add_failure,
-    add_warning,
-    resolve_path,
-    ensure_dir,
-)
-from common.quality_audit import run_quality_audit
 from common.environment import configure_runtime_environment
-from common.run_logging import (
-    close_run_file_logging,
-    configure_run_file_logging,
-    default_run_log_path,
-    prune_run_logs,
-    report_artifact_prefix,
-)
-from common.scan_source_pack import scan_source_pack
-from common.source_pack_validator import validate_source_pack
-from common.write_report import write_report
-from platforms.tmall import build as build_tmall
-from platforms.cbme import derive as derive_cbme
-from platforms.fengxiang_aikucun import derive as derive_fengxiang_aikucun
-from platforms.jd import derive as derive_jd
-from platforms.offsite import derive as derive_offsite
-from platforms.vip import derive as derive_vip
+from common.utils import 全部平台
+from workflows.certificate_assets import run_certificate_workflow
+from workflows.full_package import run_full_workflow
+from workflows.material_correction import run_material_workflow
+from workflows.platform_processing import run_platform_workflow
+
+
+logger = logging.getLogger(__name__)
+
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="全自动处理多平台商品图片包并输出中文报告。")
-    parser.add_argument("--source", required=True, help="源数据包目录")
-    parser.add_argument("--template", default="", help="模板目录，默认使用 skill 内置 template")
-    parser.add_argument("--output", default="", help="输出目录，默认桌面 multi-platform-image-processor/output")
+    """解析统一入口的工作流与业务参数。
+
+    参数：
+        argv：命令行参数列表。
+    返回值：
+        已验证基础格式的命令行命名空间。
+    """
+    parser = argparse.ArgumentParser(description="处理多平台商品图片、合格证图片和详情页面料。")
+    parser.add_argument(
+        "--mode",
+        default="platform",
+        choices=["full", "certificate", "material", "platform"],
+        help="工作流模式，默认 platform 兼容原平台处理",
+    )
+    parser.add_argument("--source", required=True, help="数据包、产品目录或多平台成品包")
+    parser.add_argument("--output", default="", help="最终输出根目录")
+    parser.add_argument("--report", default="", help="主报告 JSON 路径")
+    parser.add_argument("--product-code", default="", help="产品货号")
+    parser.add_argument("--product-name", default="", help="产品名称")
+    parser.add_argument("--color", default="", help="代表颜色")
+    parser.add_argument("--include-certificate-assets", action="store_true", help="完整流程生成固定三张业务图片")
+    parser.add_argument("--include-certificate-fabric", action="store_true", help="合格证图加入 Excel 中文面料")
+    parser.add_argument("--nas-root", default="", help="NAS 标准 UNC 根目录")
+    parser.add_argument("--product-info-root", default="", help="产品信息 Excel 目录")
+    parser.add_argument("--certificate-root", default="", help="BarTender 合格证目录")
+    parser.add_argument("--material-plan", default="", help="详情页面料视觉定位计划 JSON")
+    parser.add_argument("--size-table-source", default="", help="实际尺码表所在详情图")
+    parser.add_argument("--size-table-box", default="", help="尺码表完整区域 left,top,right,bottom")
+    parser.add_argument("--fabric-anchor", default="", help="合格证“等级”下方面料锚点 x,y")
+    parser.add_argument("--visual-review-approved", action="store_true", help="标记 Agent 已完成业务图片视觉复核")
+    parser.add_argument("--template", default="", help="平台模板目录")
     parser.add_argument(
         "--platform",
         default="all",
         choices=["all", *全部平台],
-        help="要输出的平台，默认 all",
+        help="目标平台，默认 all",
     )
-    return parser.parse_args(argv)
-
-
-def default_report_path(output: Path) -> Path:
-    safe_name = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in output.name).strip("_")
-    if not safe_name:
-        safe_name = "output"
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    return Path(__file__).resolve().parent / "output" / "report" / f"{safe_name}-{timestamp}-report.json"
-
-
-def prune_report_files(report_dir: Path, keep: int = 100) -> None:
-    reports = sorted(
-        report_dir.glob("*-report.json"),
-        key=lambda path: (path.stat().st_mtime, path.name),
-        reverse=True,
-    )
-    for old_report in reports[keep:]:
-        detail_path = old_report.with_name(
-            f"{report_artifact_prefix(old_report)}-image-records.jsonl"
-        )
-        old_report.unlink(missing_ok=True)
-        detail_path.unlink(missing_ok=True)
-
-
-def default_template_path() -> Path:
-    return Path(__file__).resolve().parents[1] / "template"
-
-
-def default_output_path() -> Path:
-    desktop = Path("E:/桌面")
-    if not desktop.exists():
-        desktop = Path.home() / "Desktop"
-    return desktop / "multi-platform-image-processor" / "output"
-
-
-def resolve_source_and_output(source: Path, output_root: Path) -> tuple[Path, Path, str]:
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    if source.name == "数据包":
-        product_name = source.parent.name
-        return source, output_root / f"{product_name}_{timestamp}", product_name
-
-    data_pack = source / "数据包"
-    if data_pack.is_dir():
-        return data_pack, output_root / f"{source.name}_{timestamp}", source.name
-
-    return source, output_root / timestamp, ""
-
-
-def detect_batch(source: Path) -> list[Path]:
-    if source.name == "数据包" or (source / "数据包").is_dir():
-        return []
-    return sorted(
-        child for child in source.iterdir()
-        if child.is_dir() and (child / "数据包").is_dir()
-    )
-
-
-def run_single(
-    source_arg: Path,
-    template: Path,
-    output_arg: Path,
-    platform: str,
-) -> int:
-    """处理单个产品并生成平台图片、主报告、逐图明细和运行日志。
-
-    参数：
-        source_arg：用户传入的数据包目录或产品目录。
-        template：平台目录模板路径。
-        output_arg：所有产品共用的输出根目录。
-        platform：需要处理的平台参数。
-    返回值：
-        0 表示成功，1 表示存在处理失败项，2 表示输入包检测失败。
-    """
-    source, output, product_name = resolve_source_and_output(source_arg, output_arg)
-    report_path = default_report_path(output)
-
-    run_id = report_artifact_prefix(report_path)
-    display_product = product_name or source.parent.name or source.name
-    log_path = configure_run_file_logging(
-        default_run_log_path(report_path),
-        run_id,
-        display_product,
-    )
-    report = new_report(source, template, output, platform)
-    report["处理配置"]["运行ID"] = run_id
-    report["追溯文件"]["运行日志"] = str(log_path)
-    if product_name:
-        report["处理配置"]["产品名"] = product_name
-        report["处理配置"]["源参数目录"] = str(source_arg)
-        report["处理配置"]["输出根目录"] = str(output_arg)
-    logger = logging.getLogger(__name__)
-    logger.info(
-        "任务开始 source=%r output=%r platform=%s report=%r",
-        str(source),
-        str(output),
-        platform,
-        str(report_path),
-        extra={
-            "stage": "主流程",
-            "event": "任务开始",
-            "status": "running",
-        },
-    )
-
-    if not source.exists():
-        add_failure(report, "源数据包目录不存在", 源目录=str(source))
-        write_report(report, report_path)
-        prune_report_files(report_path.parent)
-        logger.error(
-            "任务结束：源数据包目录不存在 source=%r",
-            str(source),
-            extra={
-                "stage": "主流程",
-                "event": "任务结束",
-                "status": "failed",
-            },
-        )
-        prune_run_logs(log_path.parent)
-        close_run_file_logging()
-        return 2
-
-    validation_assets_dir = report_path.parent / f"{report_path.stem}-assets" / "透明图问题"
-    validation = validate_source_pack(source, validation_assets_dir)
-    report["输入包检测"] = validation
-    report["素材扫描"] = scan_source_pack(source)
-    for warning in validation["警告"]:
-        add_warning(
-            report,
-            warning["信息"],
-            **{key: value for key, value in warning.items() if key != "信息"},
-        )
-    if not validation["通过"]:
-        for problem in validation["问题"]:
-            add_failure(
-                report,
-                "输入包检测失败",
-                问题=problem["信息"],
-                **{key: value for key, value in problem.items() if key != "信息"},
-            )
-        logging.getLogger(__name__).error(
-            "输入包检测失败，停止处理：%s，共%d项问题",
-            source,
-            len(validation["问题"]),
-        )
-        write_report(report, report_path)
-        prune_report_files(report_path.parent)
-        print(f"输入包检测失败，已停止处理：{source}")
-        print("标准输入结构：")
-        print(validation["标准输入结构"])
-        if validation.get("透明图问题汇总"):
-            print(f"透明图问题汇总：{validation['透明图问题汇总']}")
-        for diagnostic_path in validation.get("透明图诊断图", []):
-            print(f"透明图诊断图：{diagnostic_path}")
-        print(f"报告路径：{report_path}")
-        logger.error(
-            "任务结束：输入包检测失败 problem_count=%d",
-            len(validation["问题"]),
-            extra={
-                "stage": "主流程",
-                "event": "任务结束",
-                "status": "failed",
-            },
-        )
-        prune_run_logs(log_path.parent)
-        close_run_file_logging()
-        return 2
-
-    ensure_dir(output)
-
-    selected = 全部平台 if platform == "all" else [platform]
-    if "tmall" not in selected:
-        tmall_needed = any(p in selected for p in ["cbme", "jd", "vip", "fengxiang-aikucun"])
-    else:
-        tmall_needed = True
-
-    for key in selected:
-        copy_template_empty_dirs(template, 平台目录名[key], output / 平台目录名[key])
-
-    tmall_dir = output / 平台目录名["tmall"]
-    if tmall_needed:
-        tmall_dir = build_tmall(source, output, report)
-
-    for key in selected:
-        if key == "tmall":
-            continue
-        if key == "cbme":
-            derive_cbme(source, tmall_dir, output, report)
-        elif key == "jd":
-            derive_jd(source, tmall_dir, output, report)
-        elif key == "vip":
-            derive_vip(source, tmall_dir, output, report)
-        elif key == "fengxiang-aikucun":
-            derive_fengxiang_aikucun(source, tmall_dir, output, report)
-        elif key == "offsite":
-            derive_offsite(source, template, output, report)
-
-    audit_platforms = selected.copy()
-    if tmall_needed and "tmall" not in audit_platforms:
-        audit_platforms.insert(0, "tmall")
-    run_quality_audit(output, audit_platforms, report)
-
-    for key in audit_platforms:
-        add_platform_result(report, 平台目录名[key], output / 平台目录名[key])
-
-    write_report(report, report_path)
-    prune_report_files(report_path.parent)
-    print(f"处理完成：{output}")
-    print(f"报告路径：{report_path}")
-    exit_code = 0 if not report["失败项"] else 1
-    logger.info(
-        "任务结束 output=%r report=%r failure_count=%d",
-        str(output),
-        str(report_path),
-        len(report["失败项"]),
-        extra={
-            "stage": "主流程",
-            "event": "任务结束",
-            "status": "success" if exit_code == 0 else "failed",
-        },
-    )
-    prune_run_logs(log_path.parent)
-    close_run_file_logging()
-    return exit_code
+    args = parser.parse_args(argv)
+    if args.mode != "platform" and not args.product_code:
+        parser.error(f"{args.mode} 模式必须提供 --product-code")
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
-    """执行多平台图片包处理主流程。
+    """执行统一多模式入口。
 
     参数：
-        argv：可选命令行参数列表；未提供时读取系统命令行参数。
+        argv：可选命令行参数；未提供时读取系统参数。
     返回值：
-        0 表示成功，1 表示存在失败项或认证失败，2 表示源目录不存在。
+        工作流退出码。
     """
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s - %(message)s",
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
     args = parse_args(argv or sys.argv[1:])
     try:
-        configure_runtime_environment()
-        ensure_token()
-    except RuntimeError as e:
-        print(f"启动失败：{e}")
+        if args.mode in {"full", "platform"}:
+            configure_runtime_environment()
+            ensure_token()
+        runners = {
+            "full": run_full_workflow,
+            "certificate": run_certificate_workflow,
+            "material": run_material_workflow,
+            "platform": run_platform_workflow,
+        }
+        logger.info("统一入口开始 mode=%s source=%r", args.mode, args.source)
+        code = runners[args.mode](args)
+        logger.info("统一入口结束 mode=%s code=%d", args.mode, code)
+        return code
+    except Exception as exc:
+        logger.error("工作流启动失败 mode=%s error=%s", args.mode, exc)
         return 1
-
-    source_arg = resolve_path(args.source)
-    template = resolve_path(args.template) if args.template else default_template_path()
-    output_arg = resolve_path(args.output) if args.output else default_output_path()
-
-    assert source_arg is not None
-    assert output_arg is not None
-
-    products = detect_batch(source_arg)
-    if products:
-        print(f"检测到批处理模式，共 {len(products)} 个产品：")
-        for p in products:
-            print(f"  - {p.name}")
-        worst = 0
-        for product_dir in products:
-            print(f"\n{'='*60}")
-            print(f"开始处理：{product_dir.name}")
-            print(f"{'='*60}")
-            code = run_single(product_dir, template, output_arg, args.platform)
-            worst = max(worst, code)
-        print(f"\n全部处理完成，共 {len(products)} 个产品。")
-        return worst
-
-    return run_single(source_arg, template, output_arg, args.platform)
 
 
 if __name__ == "__main__":

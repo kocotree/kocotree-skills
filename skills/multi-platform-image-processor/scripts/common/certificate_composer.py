@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFont
@@ -60,7 +61,8 @@ def compose_certificate(
     if fabric_text:
         if fabric_anchor is None or fabric_font is None:
             raise RuntimeError("合格证加入面料时必须提供“等级”下方锚点和方正字体")
-        text = f"面料：{fabric_text}"
+        payload = re.sub(r"^(?:面料|材质|成分)\s*[:：]\s*", "", fabric_text.strip())
+        text = f"面料：{payload}"
         require_glyphs(fabric_font, text)
         draw = ImageDraw.Draw(subject)
         font = ImageFont.truetype(str(fabric_font.path), font_size)
@@ -70,6 +72,11 @@ def compose_certificate(
         lines: list[str] = []
         current = ""
         for character in text:
+            if character == "\n":
+                if current:
+                    lines.append(current)
+                current = ""
+                continue
             candidate = current + character
             if current and draw.textlength(candidate, font=font) > maximum_width:
                 lines.append(current)

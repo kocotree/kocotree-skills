@@ -15,9 +15,9 @@ Add-Type -Path $Assembly
 $engine = $null
 $document = $null
 try {
-    $engine = New-Object Seagull.BarTender.Print.Engine($true)
+    $engine = New-Object -TypeName Seagull.BarTender.Print.Engine -ArgumentList $true
     $document = $engine.Documents.Open($Source)
-    $resolution = New-Object Seagull.BarTender.Print.Resolution($Width, $Height)
+    $resolution = New-Object -TypeName Seagull.BarTender.Print.Resolution -ArgumentList $Width, $Height
     $document.ExportImageToFile(
         $Output,
         [Seagull.BarTender.Print.ImageType]::PNG,

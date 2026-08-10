@@ -83,6 +83,11 @@ def require_glyphs(asset: FontAsset, text: str) -> None:
     返回值：
         无返回值；缺字时抛出运行错误。
     """
-    missing = sorted({character for character in text if ord(character) not in asset.glyphs})
+    missing = sorted(
+        {
+            character for character in text
+            if not character.isspace() and ord(character) not in asset.glyphs
+        }
+    )
     if missing:
         raise RuntimeError(f"字体 {asset.family} 缺少字形：{''.join(missing)}")

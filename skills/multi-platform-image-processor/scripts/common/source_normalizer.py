@@ -79,3 +79,26 @@ def create_modified_copy(source: Path, output_root: Path | None = None) -> Sourc
     shutil.copytree(source, target, copy_function=shutil.copy2)
     logger.info("成品包修改副本创建完成 source=%r target=%r", str(source), str(target))
     return SourceCopy(source, target, "finished-pack")
+
+
+def cleanup_local_copy(copy: SourceCopy) -> bool:
+    """安全清理本模块创建的系统临时工作目录。
+
+    参数：
+        copy：`create_local_copy` 返回的工作副本信息。
+    返回值：
+        成功清理返回 True，不属于系统临时目录时返回 False。
+    """
+    task_root = copy.working_copy.parent.resolve()
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    try:
+        task_root.relative_to(temp_root)
+    except ValueError:
+        logger.warning("工作副本不在系统临时目录，保留文件：%s", task_root)
+        return False
+    if not task_root.name.startswith("kocotree-pack-"):
+        logger.warning("工作副本目录前缀不匹配，保留文件：%s", task_root)
+        return False
+    shutil.rmtree(task_root)
+    logger.info("本地工作副本已清理 target=%r", str(task_root))
+    return True

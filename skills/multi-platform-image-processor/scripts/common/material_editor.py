@@ -191,6 +191,8 @@ def verify_non_target_unchanged(
     before: Path,
     after: Path,
     regions: list[tuple[int, int, int, int]],
+    difference_threshold: int = 0,
+    maximum_changed_ratio: float = 0.0,
 ) -> bool:
     """检查允许修改区域以外的像素是否完全一致。
 
@@ -198,6 +200,8 @@ def verify_non_target_unchanged(
         before：修改前图片。
         after：修改后图片。
         regions：允许发生变化的矩形列表。
+        difference_threshold：忽略的单像素灰度差异上限。
+        maximum_changed_ratio：允许的非目标区域变化比例。
     返回值：
         非目标区域完全一致时返回 True。
     """
@@ -213,4 +217,9 @@ def verify_non_target_unchanged(
     for region in regions:
         draw.rectangle(region, fill=0)
     outside = ImageChops.multiply(difference.convert("L"), mask)
-    return outside.getbbox() is None
+    changed = outside.point(lambda value: 255 if value > difference_threshold else 0)
+    histogram = changed.histogram()
+    changed_pixels = sum(histogram[1:])
+    allowed_pixels = sum(mask.histogram()[1:])
+    ratio = changed_pixels / allowed_pixels if allowed_pixels else 0.0
+    return ratio <= maximum_changed_ratio

@@ -57,6 +57,10 @@ uv sync
 - `--include-certificate-assets`：完整流程生成固定三张业务图片。
 - `--include-certificate-fabric`：合格证图加入 Excel 中文面料。
 - `--nas-root`、`--product-info-root`、`--certificate-root`：覆盖业务资料路径。
+- `--material-plan`：Agent 确认的详情页面料区域、原文和版式参数 JSON。
+- `--size-table-source`、`--size-table-box`：实际尺码表详情图和完整内容坐标。
+- `--fabric-anchor`：合格证加入面料时“等级”字段下方的 `x,y` 锚点。
+- `--visual-review-approved`：Agent 完成原尺寸视觉复核后标记检查通过。
 - `--platform`：`all`、`tmall`、`cbme`、`jd`、`vip`、`fengxiang-aikucun` 或 `offsite`。
 - `--template`：平台模板目录。
 
