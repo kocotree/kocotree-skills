@@ -20,35 +20,26 @@ from workflows.material_correction import apply_material_plan
 
 
 class UnifiedEntryTests(unittest.TestCase):
-    """验证统一入口的四种模式和兼容行为。"""
+    """验证单一完整流程入口。"""
 
-    def test_business_mode_requires_product_code(self) -> None:
-        """验证业务模式缺少货号时由参数解析器阻断。"""
-        with self.assertRaises(SystemExit):
-            main_module.parse_args(["--mode", "full", "--source", "产品"])
+    def test_public_arguments_are_minimal(self) -> None:
+        """验证公开入口只要求源目录，并接受三个可选参数。"""
+        args = main_module.parse_args(["--source", "产品"])
 
-    def test_main_routes_each_mode(self) -> None:
-        """验证统一入口将四种模式路由到独立工作流。"""
-        cases = [
-            ("platform", []),
-            ("full", ["--product-code", "KQ26143"]),
-            ("certificate", ["--product-code", "KQ26143"]),
-            ("material", ["--product-code", "KQ26143"]),
-        ]
-        for mode, extra in cases:
-            with self.subTest(mode=mode), patch(
-                "main.configure_runtime_environment",
-            ), patch("main.ensure_token"), patch.dict(
-                main_module.__dict__,
-                {
-                    "run_platform_workflow": lambda args: 0,
-                    "run_full_workflow": lambda args: 0,
-                    "run_certificate_workflow": lambda args: 0,
-                    "run_material_workflow": lambda args: 0,
-                },
-            ):
-                code = main_module.main(["--mode", mode, "--source", "产品", *extra])
-            self.assertEqual(code, 0)
+        self.assertEqual(args.source, "产品")
+        self.assertEqual(args.output, "")
+        self.assertEqual(args.product_code, "")
+        self.assertEqual(args.product_name, "")
+
+    def test_main_runs_complete_workflow(self) -> None:
+        """验证入口始终调用完整处理流程。"""
+        with patch("main.configure_runtime_environment"), patch(
+            "main.ensure_token",
+        ), patch("main.run_full_workflow", return_value=0) as runner:
+            code = main_module.main(["--source", "产品"])
+
+        self.assertEqual(code, 0)
+        runner.assert_called_once()
 
 
 class WorkflowReportTests(unittest.TestCase):
@@ -160,18 +151,14 @@ class FullWorkflowTests(unittest.TestCase):
             args = SimpleNamespace(
                 source=str(source),
                 output=str(output),
-                report=str(report_path),
                 product_code="KQ26143",
                 product_name="儿童长裤",
-                nas_root="",
-                product_info_root="",
-                certificate_root="",
                 material_plan="plan.json",
-                template="",
-                platform="all",
-                include_certificate_assets=True,
             )
-            with patch("workflows.full_package.resolve_business_paths") as resolve_paths, patch(
+            with patch(
+                "workflows.full_package.default_business_report_path",
+                return_value=report_path,
+            ), patch("workflows.full_package.resolve_business_paths") as resolve_paths, patch(
                 "workflows.full_package.require_accessible_directory",
                 side_effect=[root, root],
             ), patch(

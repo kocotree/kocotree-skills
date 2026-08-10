@@ -21,13 +21,13 @@ class ReportOutputsTests(unittest.TestCase):
         """关闭测试创建的运行日志处理器。"""
         close_run_file_logging()
 
-    def test_cli_keeps_output_and_supports_report_path(self) -> None:
-        """验证兼容模式保留输出参数并支持显式报告路径。"""
+    def test_cli_keeps_public_optional_arguments(self) -> None:
+        """验证完整流程入口保留三个公开可选参数。"""
         args = parse_args(["--source", "源数据包", "--output", "成品目录"])
 
         self.assertEqual(args.output, "成品目录")
-        self.assertEqual(args.mode, "platform")
-        self.assertEqual(args.report, "")
+        self.assertEqual(args.product_code, "")
+        self.assertEqual(args.product_name, "")
 
     def test_main_report_is_compact_and_image_records_are_separate(self) -> None:
         """验证主报告只保留统计，完整图片记录写入 JSONL。"""

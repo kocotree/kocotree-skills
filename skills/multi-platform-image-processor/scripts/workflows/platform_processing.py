@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from common import (
     全部平台,
@@ -14,7 +13,6 @@ from common import (
     copy_template_empty_dirs,
     ensure_dir,
     new_report,
-    resolve_path,
 )
 from common.quality_audit import run_quality_audit
 from common.run_logging import (
@@ -85,30 +83,18 @@ def resolve_source_and_output(source: Path, output_root: Path) -> tuple[Path, Pa
     return source, output_root / timestamp, ""
 
 
-def detect_batch(source: Path) -> list[Path]:
-    """返回批处理总目录下的产品目录。"""
-    if source.name == "数据包" or (source / "数据包").is_dir():
-        return []
-    return sorted(
-        child for child in source.iterdir()
-        if child.is_dir() and (child / "数据包").is_dir()
-    )
-
-
 def run_single(
     source_arg: Path,
     template: Path,
     output_arg: Path,
-    platform: str,
     report_override: Path | None = None,
 ) -> tuple[int, Path, Path]:
-    """处理单个产品并生成平台图片与报告。
+    """处理单个产品并生成六平台图片与报告。
 
     参数：
         source_arg：数据包目录或产品目录。
         template：平台模板路径。
         output_arg：输出根目录。
-        platform：目标平台参数。
         report_override：可选的主报告路径。
     返回值：
         退出码、实际输出目录和主报告路径。
@@ -118,14 +104,14 @@ def run_single(
     run_id = report_artifact_prefix(report_path)
     display_product = product_name or source.parent.name or source.name
     log_path = configure_run_file_logging(default_run_log_path(report_path), run_id, display_product)
-    report = new_report(source, template, output, platform)
+    report = new_report(source, template, output, "all")
     report["处理配置"]["运行ID"] = run_id
     report["追溯文件"]["运行日志"] = str(log_path)
     if product_name:
         report["处理配置"]["产品名"] = product_name
         report["处理配置"]["源参数目录"] = str(source_arg)
         report["处理配置"]["输出根目录"] = str(output_arg)
-    logger.info("平台任务开始 source=%r output=%r platform=%s", str(source), str(output), platform)
+    logger.info("六平台任务开始 source=%r output=%r", str(source), str(output))
     try:
         if not source.exists():
             add_failure(report, "源数据包目录不存在", 源目录=str(source))
@@ -152,35 +138,18 @@ def run_single(
             return 2, output, report_path
 
         ensure_dir(output)
-        selected = 全部平台 if platform == "all" else [platform]
-        tmall_needed = "tmall" in selected or any(
-            item in selected for item in ["cbme", "jd", "vip", "fengxiang-aikucun"]
-        )
-        for key in selected:
+        for key in 全部平台:
             copy_template_empty_dirs(template, 平台目录名[key], output / 平台目录名[key])
 
-        tmall_dir = output / 平台目录名["tmall"]
-        if tmall_needed:
-            tmall_dir = build_tmall(source, output, report)
-        for key in selected:
-            if key == "tmall":
-                continue
-            if key == "cbme":
-                derive_cbme(source, tmall_dir, output, report)
-            elif key == "jd":
-                derive_jd(source, tmall_dir, output, report)
-            elif key == "vip":
-                derive_vip(source, tmall_dir, output, report)
-            elif key == "fengxiang-aikucun":
-                derive_fengxiang_aikucun(source, tmall_dir, output, report)
-            elif key == "offsite":
-                derive_offsite(source, template, output, report)
+        tmall_dir = build_tmall(source, output, report)
+        derive_cbme(source, tmall_dir, output, report)
+        derive_jd(source, tmall_dir, output, report)
+        derive_vip(source, tmall_dir, output, report)
+        derive_fengxiang_aikucun(source, tmall_dir, output, report)
+        derive_offsite(source, template, output, report)
 
-        audit_platforms = selected.copy()
-        if tmall_needed and "tmall" not in audit_platforms:
-            audit_platforms.insert(0, "tmall")
-        run_quality_audit(output, audit_platforms, report)
-        for key in audit_platforms:
+        run_quality_audit(output, 全部平台, report)
+        for key in 全部平台:
             add_platform_result(report, 平台目录名[key], output / 平台目录名[key])
         write_report(report, report_path)
         prune_report_files(report_path.parent)
@@ -190,29 +159,3 @@ def run_single(
     finally:
         prune_run_logs(log_path.parent)
         close_run_file_logging()
-
-
-def run_platform_workflow(args: Any) -> int:
-    """执行平台兼容模式并支持单产品与批处理。
-
-    参数：
-        args：统一入口参数。
-    返回值：
-        全部产品中的最严重退出码。
-    """
-    source_arg = resolve_path(args.source)
-    template = resolve_path(args.template) if args.template else default_template_path()
-    output_arg = resolve_path(args.output) if args.output else default_output_path()
-    assert source_arg is not None and output_arg is not None
-    products = detect_batch(source_arg)
-    if products and args.report:
-        raise RuntimeError("批处理模式不能为多个产品共用一个 --report 文件")
-    if products:
-        worst = 0
-        for product_dir in products:
-            code, _, _ = run_single(product_dir, template, output_arg, args.platform)
-            worst = max(worst, code)
-        return worst
-    report = resolve_path(args.report) if args.report else None
-    code, _, _ = run_single(source_arg, template, output_arg, args.platform, report)
-    return code

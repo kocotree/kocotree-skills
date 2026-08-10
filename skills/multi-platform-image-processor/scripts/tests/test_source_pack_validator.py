@@ -331,7 +331,6 @@ class SourcePackValidatorTests(unittest.TestCase):
                     source,
                     temp_root / "模板",
                     output_root,
-                    "all",
                 )
 
             self.assertEqual(code, 2)

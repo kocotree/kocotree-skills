@@ -13,9 +13,9 @@ import xlwt
 from common.font_assets import load_font_assets, require_glyphs
 from common.nas_paths import require_accessible_directory, to_unc_path
 from common.product_info_reader import extract_chinese_material, find_product_info, read_product_records
-from common.product_matcher import select_bartender_file, select_representative_size, select_unique
+from common.product_matcher import contains_exact_code, infer_product_code, select_bartender_file
 from common.settings import resolve_business_paths
-from common.source_normalizer import create_local_copy, create_modified_copy, detect_source_kind
+from common.source_normalizer import create_local_copy, detect_source_kind
 
 
 class BusinessSettingsTests(unittest.TestCase):
@@ -125,25 +125,26 @@ class ProductInfoTests(unittest.TestCase):
 
 
 class ProductMatcherTests(unittest.TestCase):
-    """验证货号边界和代表尺码选择。"""
+    """验证货号识别、边界和 BarTender 代表尺码选择。"""
 
     def test_product_code_requires_exact_boundary(self) -> None:
         """验证相邻的更长货号不会被当作精确匹配。"""
-        result = select_unique(
-            ["KQ26143 产品", "KQ261430 产品"],
-            "KQ26143",
-        )
+        self.assertTrue(contains_exact_code("KQ26143 产品", "KQ26143"))
+        self.assertFalse(contains_exact_code("KQ261430 产品", "KQ26143"))
 
-        self.assertEqual(result.selected, "KQ26143 产品")
+    def test_product_code_can_be_inferred_from_product_directory(self) -> None:
+        """验证产品目录中唯一货号可供完整流程识别。"""
+        self.assertEqual(infer_product_code(Path("KQ26143 儿童长裤") / "数据包"), "KQ26143")
 
     def test_prefers_110_then_smallest_size(self) -> None:
         """验证优先 110 码且缺少时选择最小尺码。"""
-        preferred = select_representative_size(
-            [Path("KQ26143-蓝色-100.btw"), Path("KQ26143-蓝色-110.btw")]
-        )
-        fallback = select_representative_size(
-            [Path("KQ26143-蓝色-120.btw"), Path("KQ26143-蓝色-100.btw")]
-        )
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            for name in ("KQ26143-蓝色-100.btw", "KQ26143-蓝色-110.btw"):
+                (root / name).write_bytes(b"btw")
+            preferred = select_bartender_file(root, "KQ26143")
+            (root / "KQ26143-蓝色-110.btw").unlink()
+            fallback = select_bartender_file(root, "KQ26143")
 
         self.assertEqual(preferred.selected.name, "KQ26143-蓝色-110.btw")
         self.assertEqual(fallback.selected.name, "KQ26143-蓝色-100.btw")
@@ -164,8 +165,8 @@ class ProductMatcherTests(unittest.TestCase):
 class SourceAndFontTests(unittest.TestCase):
     """验证工作副本隔离和 Skill 字体资产。"""
 
-    def test_source_copy_and_finished_copy_preserve_original(self) -> None:
-        """验证原始包与成品包均在副本中处理。"""
+    def test_source_copy_preserves_original(self) -> None:
+        """验证产品数据包始终在本地副本中处理。"""
         with TemporaryDirectory() as temp_dir_value:
             root = Path(temp_dir_value)
             product = root / "产品A"
@@ -180,14 +181,6 @@ class SourceAndFontTests(unittest.TestCase):
                 encoding="utf-8",
             )
             self.assertEqual((data_pack / "源文件.txt").read_text(encoding="utf-8"), "原始")
-
-            finished = root / "全平台包"
-            (finished / "天猫通用版").mkdir(parents=True)
-            (finished / "京东").mkdir()
-            modified = create_modified_copy(finished, root / "输出")
-            self.assertEqual(modified.kind, "finished-pack")
-            self.assertTrue(modified.working_copy.is_dir())
-            self.assertTrue(finished.is_dir())
 
     def test_all_font_assets_load_and_cover_roles(self) -> None:
         """验证四个字体文件的内部名称和必需字形。"""

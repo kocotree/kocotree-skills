@@ -8,11 +8,11 @@ from typing import Any
 from common.product_info_reader import ProductInfoRecord
 
 
-def default_business_report_path(mode: str, product_code: str) -> Path:
-    """生成业务工作流默认报告路径。"""
+def default_business_report_path(product_code: str) -> Path:
+    """生成完整处理流程的默认报告路径。"""
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     safe_code = "".join(character for character in product_code if character.isalnum()) or "product"
-    return Path(__file__).resolve().parents[1] / "output" / "report" / f"{safe_code}-{timestamp}-{mode}-report.json"
+    return Path(__file__).resolve().parents[1] / "output" / "report" / f"{safe_code}-{timestamp}-report.json"
 
 
 def parse_box(value: str, label: str) -> tuple[int, int, int, int]:
@@ -26,17 +26,6 @@ def parse_box(value: str, label: str) -> tuple[int, int, int, int]:
     left, top, right, bottom = numbers
     if left >= right or top >= bottom:
         raise RuntimeError(f"{label}的右下坐标必须大于左上坐标")
-    return numbers
-
-
-def parse_point(value: str, label: str) -> tuple[int, int]:
-    """解析逗号分隔的二维坐标。"""
-    try:
-        numbers = tuple(int(part.strip()) for part in value.split(","))
-    except ValueError as exc:
-        raise RuntimeError(f"{label}必须是两个逗号分隔整数") from exc
-    if len(numbers) != 2:
-        raise RuntimeError(f"{label}必须是 x,y")
     return numbers
 
 

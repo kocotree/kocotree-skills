@@ -11,16 +11,15 @@ from PIL import Image
 from common.bartender_exporter import export_bartender_image, fingerprint
 from common.certificate_composer import compose_certificate, compose_hangtag
 from common.font_assets import load_font_assets
-from common.material_checker import compare_material
 from common.material_editor import (
     TextStyle,
+    compare_material,
     replace_material_text,
     split_font_runs,
     verify_non_target_unchanged,
     wrap_mixed_text,
 )
-from common.size_image_composer import compose_size_image
-from common.size_table_extractor import CropBox, extract_size_table
+from common.size_table_extractor import CropBox, compose_size_image, extract_size_table
 
 
 class BarTenderExporterTests(unittest.TestCase):

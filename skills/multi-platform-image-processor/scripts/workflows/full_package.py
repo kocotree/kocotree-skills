@@ -7,6 +7,7 @@ from typing import Any
 
 from common.nas_paths import require_accessible_directory, to_unc_path
 from common.product_info_reader import ProductInfoRecord, extract_chinese_material, find_product_info
+from common.product_matcher import infer_product_code
 from common.settings import resolve_business_paths
 from common.source_normalizer import cleanup_local_copy, create_local_copy
 from common.workflow_report import (
@@ -34,12 +35,16 @@ def run_full_workflow(args: Any) -> int:
         完成返回 0，存在失败项返回 1。
     """
     source = Path(args.source).expanduser().resolve()
+    product_code = args.product_code.strip() or infer_product_code(source)
+    product_name = args.product_name.strip()
     output_root = Path(args.output).expanduser().resolve() if args.output else default_output_path()
-    report = new_workflow_report("full", source, output_root)
-    report_path = Path(args.report).expanduser().resolve() if args.report else default_business_report_path("full", args.product_code)
+    report = new_workflow_report("完整流程", source, output_root)
+    report_path = default_business_report_path(product_code)
     working_copy = None
     try:
-        business_paths = resolve_business_paths(args.nas_root, args.product_info_root, args.certificate_root)
+        if not product_code:
+            raise RuntimeError("无法从产品目录可靠识别货号，请提供 --product-code")
+        business_paths = resolve_business_paths()
         product_info_root = require_accessible_directory(
             to_unc_path(business_paths.product_info_root),
             "产品信息目录",
@@ -48,7 +53,7 @@ def run_full_workflow(args: Any) -> int:
             to_unc_path(business_paths.certificate_root),
             "BarTender 合格证目录",
         )
-        match = find_product_info(product_info_root, args.product_code, args.product_name)
+        match = find_product_info(product_info_root, product_code, product_name)
         report["产品匹配"] = product_match_to_dict(
             match.selected if isinstance(match.selected, ProductInfoRecord) else None,
             match.candidates,
@@ -65,18 +70,18 @@ def run_full_workflow(args: Any) -> int:
         working_copy = create_local_copy(source)
         report["路径"]["源UNC路径"] = str(to_unc_path(source))
         report["路径"]["本地工作副本"] = str(working_copy.working_copy)
-        plan_path = Path(args.material_plan).expanduser().resolve() if args.material_plan else None
+        plan_value = getattr(args, "material_plan", "")
+        plan_path = Path(plan_value).expanduser().resolve() if plan_value else None
         material_ok = apply_material_plan(working_copy.working_copy, expected, plan_path, report)
         if not material_ok:
             raise RuntimeError("详情页面料检查未完成，平台派生已停止")
 
         platform_report_path = report_path.with_name(f"{report_path.stem}-platform-report.json")
-        template = Path(args.template).expanduser().resolve() if args.template else default_template_path()
+        template = default_template_path()
         platform_code, product_output, actual_platform_report = run_single(
             working_copy.working_copy,
             template,
             output_root,
-            args.platform,
             platform_report_path,
         )
         platform_report = json.loads(actual_platform_report.read_text(encoding="utf-8"))
@@ -87,12 +92,12 @@ def run_full_workflow(args: Any) -> int:
 
         generate_business_images(
             args,
-            record,
+            product_code,
+            product_name,
             product_output,
             working_copy.working_copy,
             certificate_root,
             report,
-            generate_all=args.include_certificate_assets,
         )
     except Exception as exc:
         add_report_item(report, "失败项", "完整流程执行失败", 错误=str(exc))
