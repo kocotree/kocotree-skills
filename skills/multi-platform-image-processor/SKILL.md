@@ -1,123 +1,92 @@
 ---
 name: multi-platform-image-processor
-description: 全自动处理商品图片数据包并输出面向多平台规格的图片包。用于天猫通用版、京东、CBME、唯品会、蜂享家＋爱库存、站外通用版的主图、SKU、白底图、透明图、详情页、素材图分类、缩放、压缩、去字、透明裁边、切片、质检和报告生成。
-metadata:
-  version: "1.1.1"
+description: 全自动处理商品图片数据包并输出多平台合规图片包与业务图片。用于完整全平台处理，制作合格证图、吊牌图、尺码图，依据产品信息 Excel 检查和修正详情页中文面料，以及从原始包、人工处理包或多平台成品包派生天猫、京东、CBME、唯品会、蜂享家＋爱库存和站外通用版图片。
 ---
 
 # 多平台图片处理
 
-## 环境初始化
+## 运行模式
 
-首次安装后执行：
+通过 `scripts/main.py --mode` 选择流程：
 
-```bash
-cd scripts
-uv run init.py
+- `full`：核对并修正面料，生成六平台图片和业务图片，执行完整交付质检。
+- `certificate`：生成合格证图、吊牌图和尺码图，不运行平台派生。
+- `material`：检查并修正详情页面料；成品包输出修改副本。
+- `platform`：运行六平台图片处理引擎，兼容平台专项任务。
+
+完整读取模式与输入要求时使用 [workflow_modes.md](references/workflow_modes.md)。
+
+## 环境准备
+
+在 `scripts/` 目录初始化环境：
+
+```powershell
+uv sync
+.venv\Scripts\python.exe init.py
 ```
 
-如未安装 uv，先执行：
-
-- macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
-
-初始化流程创建本 skill 的 `.venv`，在 macOS 上通过 Homebrew 安装 `pngquant` 所需的系统运行库，安装并初始化 `text2image`，验证 `pngquant` 实际执行，并将环境状态写入当前虚拟环境，最后检查飞书认证。
-
-首次认证会输出飞书授权链接并结束当前命令。完成浏览器授权后重新执行 `uv run init.py`，脚本获取并保存 token 后完成初始化。
-
-macOS 需要预先安装 Homebrew；初始化脚本仅在 `pngquant` 明确报告缺少 `little-cms2` 或 `libpng` 时安装对应运行库。
-
-初始化完成后，使用 `.venv` 中的 Python 执行图片处理脚本。
-
-## 核心流程
-
-使用 `uv + Python` 自动完成整包处理。默认流程：
-
-1. 强制检测输入包文件夹结构和透明图独立区域。`SKU` 根目录大小写不限；其他标准目录名称必须准确。透明图允许包含多个明显的主体组成部分；极小残留或未经确认的独立区域会立即写报告并停止，不创建平台内容。
-2. 扫描通过的数据包，识别 `主图`、`SKU`、`白底图`、`透明图`、`详情`、`素材图`。
-3. 先生成天猫通用版母版，尤其是 `790详情页`。
-4. 从天猫母版派生 CBME、京东、唯品会、蜂享家＋爱库存、站外通用版。
-5. 执行确定性处理、模型去字、尺寸转换和压缩。
-6. 由 Agent 根据报告中的复核建议处理复杂视觉判断。
-7. 按平台对已生成文件执行已配置的大小、尺寸、格式、透明通道、详情命名和数量检查。
-8. 输出平台文件夹和中文 JSON 报告。
+初始化会校验 Python 环境、图片压缩工具、业务字体、Excel 读取能力和 BarTender 可用性。站外 SKU 去字使用 `text2image` Skill；首次调用时按认证提示完成授权。
 
 ## 推荐命令
 
-在本 skill 目录下运行，注意使用虚拟环境，以下是 Windows PowerShell 示例：
+完整流程：
 
 ```powershell
-cd scripts
 .venv\Scripts\python.exe main.py `
-  --source "源数据包目录"
+  --mode full `
+  --source "产品数据包路径" `
+  --product-code "产品货号" `
+  --product-name "产品名称" `
+  --include-certificate-assets
 ```
 
-Windows 中文环境下如遇编码错误，先设置 `$env:PYTHONUTF8 = "1"`。
+专项流程：
 
-## 参数说明
+```powershell
+.venv\Scripts\python.exe main.py --mode certificate --source "产品路径" --product-code "产品货号"
+.venv\Scripts\python.exe main.py --mode material --source "产品路径" --product-code "产品货号"
+.venv\Scripts\python.exe main.py --mode platform --source "数据包路径" --platform all
+```
 
-- `--platform` 支持 `all`（默认）、`tmall`、`cbme`、`jd`、`vip`、`fengxiang-aikucun`、`offsite`。
-- `--template` 指定模板目录，默认使用 skill 内置 `template`。
-- `--output` 指定输出目录，默认 `E:\桌面\multi-platform-image-processor\output`。
-- 报告统一保存到 `scripts/output/report/`，最多保留 100 份。
-- `--source` 自动检测数据源结构：
-  - **单产品**：`--source` 指向 `数据包` 目录，或其父目录包含 `数据包/` 子目录，输出以 `数据包` 父文件夹名为产品名。
-  - **批处理**：`--source` 指向一个包含多个产品子目录的总包（每个子目录内含 `数据包/`），自动逐个处理，输出目录以各产品的 `数据包` 父文件夹名命名。
-- 详情页使用平铺结构或完整且非空的“上/下”结构，两种结构互斥。
-- 透明图主体区域根据 `scripts/config/透明图规则.json` 中的通用阈值分类为明显主体、明显脏点和待确认区域；明显的多个主体组成部分自动通过检测并记录警告。
-- 站外 SKU 去文字依赖 `text2image` skill（默认模型 `gemini-3-pro-image-preview`，10 并发），文字只能由模型移除；本地脚本只负责裁切、白底填充、验收和回贴。脚本识别右侧商品卡片左边缘，向左增加图片宽度 `3%` 的安全余量，将右侧纵向裁片放入与原图同尺寸的白色模型输入画布。模型结果必须保持输入宽高比；差异验收只比较右侧裁片的非文字区域，明显变化比例上限为 `15%`、平均通道差异上限为 `10`，标签内部非文字底图变化比例上限为 `12%`。模型调用失败或结果验收不通过时自动重试一次，第二次仍失败才按原图压缩输出并记录两次失败原因。最终只回贴彩色标签内部，其他区域使用原图。
-- **脚本完成后，Agent 必须读取报告 JSON，检查 `失败项`、`风险`、`警告`、`Agent复核建议` 字段，并向用户逐条给出警告说明。**
-- 主报告保持精简，逐图处理记录保存在报告引用的 JSONL 明细文件中。Agent 仅在定位具体图片时读取对应明细，排查运行异常时读取对应日志。
-- PNG 压缩结果分为成功、保留原图、超出限制和执行失败，主报告记录分类统计，逐图明细记录最终状态、退出码和大小验收结果。
-- **输入包检测失败时，Agent 必须读取 `输入包检测.问题` 和 `输入包检测.标准输入结构`，向用户逐条说明实际问题，并使用 Markdown 代码块完整展示报告中的标准输入结构；禁止只回复“结构不通过”或省略目录树。存在 `输入包检测.透明图问题汇总` 或问题项中的 `可视化诊断图` 时，必须查看并使用 Markdown 图片完整展示给用户。**
+常用参数：
 
-## 脚本职责
+- `--source`：数据包、产品目录、批处理总目录或多平台成品包。
+- `--output`：最终输出根目录。
+- `--report`：报告文件路径。
+- `--product-code`、`--product-name`：产品身份信息。
+- `--include-certificate-assets`：完整流程生成固定三张业务图片。
+- `--include-certificate-fabric`：合格证图加入 Excel 中文面料。
+- `--nas-root`、`--product-info-root`、`--certificate-root`：覆盖业务资料路径。
+- `--platform`：`all`、`tmall`、`cbme`、`jd`、`vip`、`fengxiang-aikucun` 或 `offsite`。
+- `--template`：平台模板目录。
 
-- `scripts/main.py`：总入口，调度扫描、母版生成、平台派生、质检、报告。
-- `scripts/init.py`：初始化虚拟环境后的系统运行库、工具依赖、`text2image` 和飞书认证。
-- `scripts/common/`：通用工具模块。
-  - `environment.py`：保存和加载当前虚拟环境的初始化状态。
-  - `utils.py`：路径、图片信息、报告管理等基础工具。
-  - `image_resize_compress.py`：图片缩放、格式转换、JPG/PNG 压缩。
-  - `scan_source_pack.py`：扫描源包并生成素材清单。
-  - `source_pack_validator.py`：在处理前强制检查标准文件夹结构，通过透明通道连通区域区分主体组成部分、待确认区域和脏点，并将诊断图路径写入报告。
-  - `transparent_issue_visualizer.py`：在棋盘背景上无覆盖展示原图，并用外围空心框、编号和独立透明度证据图展示待检查区域，生成多图汇总。
-  - `detail_page_slice.py`：详情页缩放、拼接、切片、连续命名。
-  - `transparent_image_fit.py`：透明图裁边、顶满、京东放大 4px、唯品会放大 10px、保留 alpha。
-  - `logo_overlay.py`：站外白底图叠加 `logo3.png`。
-  - `text_removal.py`：使用初始化完成的 text2image 环境生成站外 SKU 去文字图，执行尺寸与受保护区域验收，并管理临时图保留规则。
-  - `sku_card_crop.py`：识别右侧商品卡片和彩色标签，生成带左侧安全余量的模型输入，并将通过验收的标签内部区域贴回原图。
-  - `quality_audit.py`：按平台检查已生成文件的已配置规则。
-  - `run_logging.py`：创建每次运行独立的结构化日志并管理保留数量。
-  - `write_report.py`：输出 JSON 报告。
-- `scripts/platforms/`：各平台独立处理模块。
-  - `tmall.py`：生成天猫通用版母版。
-  - `cbme.py`、`jd.py`、`vip.py`、`fengxiang_aikucun.py`、`offsite.py`：各平台派生。
-- `scripts/write_report.py`：中文报告输出。
-- `scripts/config/透明图规则.json`：所有产品共用的透明图可见阈值、明显主体边界和明显脏点边界。
-- `template/`：默认平台空目录模板和站外 `logo3.png`；空目录用 `.gitkeep` 占位以便 Git 提交。
+## 完整流程
+
+按以下顺序执行 `full`：
+
+1. 解析产品身份、源路径和输出路径，将映射盘符归一为 UNC 路径。
+2. 匹配唯一产品信息 Excel 和 BarTender 文件，并创建本地临时源副本。
+3. 读取 Excel 中文面料，检查并修正详情页母版。
+4. 运行六平台处理引擎并读取平台子报告。
+5. 提取实际尺码表，始终生成 `尺码图\尺码图.jpg`。
+6. 触发业务图片时生成合格证图、吊牌图和尺码图。
+7. 执行业务级质检并写入完整流程报告。
 
 ## 参考资料
 
-- 需要确认平台尺寸、命名和来源规则时，读取 `references/platform_rules.md`。
-- 需要确认输出目录、报告字段和失败策略时，读取 `references/output_contract.md`。
-- 需要处理详情页结构判断、SKU 去字质检等复杂视觉任务时，读取 `references/agent_visual_tasks.md`。
-- 需要补充或调整验收逻辑时，读取 `references/quality_checks.md`。
+- 识别模式、输入包类型和完成条件：读取 [workflow_modes.md](references/workflow_modes.md)。
+- 处理平台图片：读取 [platform_rules.md](references/platform_rules.md)。
+- 生成合格证图、吊牌图或尺码图：读取 [certificate_assets.md](references/certificate_assets.md)。
+- 检查或修正面料：读取 [material_correction.md](references/material_correction.md)。
+- 访问 NAS、Excel 或 BarTender 文件：读取 [nas_and_product_sources.md](references/nas_and_product_sources.md)。
+- 确认输出目录和报告字段：读取 [output_contract.md](references/output_contract.md)。
+- 执行自动与业务质检：读取 [quality_checks.md](references/quality_checks.md)。
+- 处理视觉定位和复核：读取 [agent_visual_tasks.md](references/agent_visual_tasks.md)。
 
-## 执行原则
+## 完成要求
 
-- 先产出天猫通用版，再派生其他平台，避免多处重复处理详情页。
-- 图片处理使用 `uv run init.py` 生成的环境状态；每次运行检查飞书认证，access token 过期时使用已有 refresh token 自动刷新。
-- 输入包检测未通过时必须停止，不得用非标准目录猜测或降级继续生成。
-- `scripts/config/透明图规则.json` 是透明图检测的规则源；规则缺失或无效时必须停止并通知用户联系管理员。
-- 输入包检测未通过时，最终答复必须包含报告提供的完整标准输入结构，帮助用户直接整理数据包。
-- 透明图独立区域导致检测失败时，最终答复必须展示透明图问题汇总和对应单图诊断图，说明上方原图无覆盖、下方为定位与增强证据。
-- 每个平台脚本负责平台编排逻辑；通用处理能力放在共享脚本中。
-- 自动处理失败时仍尽量输出最接近规则的结果，并在报告里标记 `警告`、`风险`、`失败项` 或 `Agent复核建议`。
-- 模板中存在但源数据包没有素材的文件夹必须保留为空文件夹。
-- 平台规则标记为空的目录保留空目录结构。
-- 透明 PNG 必须调用初始化验证通过的 `pngquant` 并验收退出码、输出文件和最终大小；超出平台限制时写入警告，执行失败时写入失败项。
-
-## 重要说明
-
-**禁止修改脚本和本文档。若出现运行问题，请通知用户联系管理员。**
+- 所需产品资料匹配唯一，面料检查已完成。
+- 平台子报告和完整流程报告中没有未解决的失败项。
+- 完整流程的尺码图存在且通过质检；触发业务图片时三张图片全部通过质检。
+- 报告中的警告、风险和 Agent 复核建议逐项反馈给用户。
+- 遇到缺失资料、候选冲突或视觉任务无法可靠自动完成时，保留已完成结果并明确报告阻塞项。

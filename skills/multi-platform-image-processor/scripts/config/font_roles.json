@@ -1,0 +1,18 @@
+{
+  "方正兰亭中黑": {
+    "文件": "方正兰亭中黑_GBK-Regular.ttf",
+    "字体族": "方正兰亭中黑_GBK"
+  },
+  "方正兰亭中黑备用": {
+    "文件": "FZLTZHJW.TTF",
+    "字体族": "方正兰亭中黑简体"
+  },
+  "G8321": {
+    "文件": "G8321-SEMIBOLD.OTF",
+    "字体族": "G8321 SemiBold"
+  },
+  "数字1": {
+    "文件": "阿里妈妈方圆体-SemiBold.ttf",
+    "字体族": "Alimama FangYuanTi VF SemiBold"
+  }
+}
