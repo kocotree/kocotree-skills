@@ -27,6 +27,26 @@ logger = logging.getLogger(__name__)
 全部平台 = list(平台目录名)
 
 
+def build_platform_directory_names(product_code: str, product_name: str) -> dict[str, str]:
+    """构造当前产品的六平台输出目录名。
+
+    参数：
+        product_code：Excel 确认的产品货号。
+        product_name：Excel 确认的产品名称。
+    返回值：
+        包含六个平台键与实际输出目录名的字典。
+    """
+    code = re.sub(r'[<>:"/\\|?*]', " ", product_code).strip()
+    name = re.sub(r'[<>:"/\\|?*]', " ", product_name).strip()
+    code = " ".join(code.split())
+    name = " ".join(name.split())
+    if not code or not name:
+        raise RuntimeError("生成京东目录名需要 Excel 中的产品货号和产品名称")
+    directory_names = dict(平台目录名)
+    directory_names["jd"] = f"{code} {name}-京东"
+    return directory_names
+
+
 def resolve_path(value: str | Path | None) -> Path | None:
     if value is None:
         return None

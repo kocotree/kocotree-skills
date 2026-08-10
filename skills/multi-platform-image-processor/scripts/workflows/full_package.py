@@ -66,6 +66,10 @@ def run_full_workflow(args: Any) -> int:
             raise RuntimeError(match.reason)
         record = match.selected
         assert isinstance(record, ProductInfoRecord)
+        confirmed_product_code = str(record.get("产品货号", "")).strip() or product_code
+        confirmed_product_name = str(record.get("产品名称", "")).strip() or product_name
+        if not confirmed_product_name:
+            raise RuntimeError("产品信息 Excel 缺少产品名称")
         expected = extract_chinese_material(record.get("中文面料", ""))
         if not expected:
             raise RuntimeError("产品信息 Excel 缺少中文面料")
@@ -86,6 +90,8 @@ def run_full_workflow(args: Any) -> int:
             template,
             output_root,
             platform_report_path,
+            product_code=confirmed_product_code,
+            product_name=confirmed_product_name,
         )
         platform_report = json.loads(actual_platform_report.read_text(encoding="utf-8"))
         merge_platform_report(report, platform_report, actual_platform_report)
@@ -95,8 +101,8 @@ def run_full_workflow(args: Any) -> int:
 
         generate_business_images(
             args,
-            product_code,
-            product_name,
+            confirmed_product_code,
+            confirmed_product_name,
             product_output,
             working_copy.working_copy,
             certificate_root,

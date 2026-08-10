@@ -8,6 +8,7 @@ from common import (
     add_failure,
     add_platform_result,
     add_warning,
+    build_platform_directory_names,
     copy_template_empty_dirs,
     ensure_dir,
     new_report,
@@ -87,6 +88,8 @@ def run_single(
     template: Path,
     output_arg: Path,
     report_override: Path | None = None,
+    product_code: str = "",
+    product_name: str = "",
 ) -> tuple[int, Path, Path]:
     """处理单个产品并生成六平台图片与报告。
 
@@ -95,6 +98,8 @@ def run_single(
         template：平台模板路径。
         output_arg：输出根目录。
         report_override：可选的主报告路径。
+        product_code：Excel 确认的产品货号，用于构造京东目录名。
+        product_name：Excel 确认的产品名称，用于构造京东目录名。
     返回值：
         退出码、实际输出目录和主报告路径。
     """
@@ -137,19 +142,24 @@ def run_single(
             return 2, output, report_path
 
         ensure_dir(output)
+        directory_names = build_platform_directory_names(product_code, product_name)
+        platform_directories = {
+            key: output / directory_names[key]
+            for key in 全部平台
+        }
         for key in 全部平台:
-            copy_template_empty_dirs(template, 平台目录名[key], output / 平台目录名[key])
+            copy_template_empty_dirs(template, 平台目录名[key], platform_directories[key])
 
         tmall_dir = build_tmall(source, output, report)
         derive_cbme(source, tmall_dir, output, report)
-        derive_jd(source, tmall_dir, output, report)
+        derive_jd(source, tmall_dir, platform_directories["jd"], report)
         derive_vip(source, tmall_dir, output, report)
         derive_fengxiang_aikucun(source, tmall_dir, output, report)
         derive_offsite(source, template, output, report)
 
-        run_quality_audit(output, 全部平台, report)
+        run_quality_audit(output, 全部平台, report, platform_directories)
         for key in 全部平台:
-            add_platform_result(report, 平台目录名[key], output / 平台目录名[key])
+            add_platform_result(report, directory_names[key], platform_directories[key])
         write_report(report, report_path)
         prune_report_files(report_path.parent)
         exit_code = 0 if not report["失败项"] else 1

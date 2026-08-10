@@ -3,23 +3,41 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .utils import list_images, image_info, add_warning
+from .utils import list_images, image_info, add_warning, 平台目录名
 
 
-def run_quality_audit(output_root: Path, platforms: list[str], report: dict) -> None:
+def run_quality_audit(
+    output_root: Path,
+    platforms: list[str],
+    report: dict,
+    platform_directories: dict[str, Path] | None = None,
+) -> None:
+    """按平台实际输出目录执行图片质检。
+
+    参数：
+        output_root：六平台输出根目录。
+        platforms：需要执行质检的平台键列表。
+        report：用于记录质检结果的报告。
+        platform_directories：可选的平台键与实际输出目录映射。
+    返回值：
+        无返回值。
+    """
+    directories = platform_directories or {
+        key: output_root / directory_name for key, directory_name in 平台目录名.items()
+    }
     for platform in platforms:
         if platform == "tmall":
-            _audit_tmall(output_root / "天猫通用版", report)
+            _audit_tmall(directories[platform], report)
         elif platform == "cbme":
-            _audit_cbme(output_root / "CBME", report)
+            _audit_cbme(directories[platform], report)
         elif platform == "jd":
-            _audit_jd(output_root / "京东", report)
+            _audit_jd(directories[platform], report)
         elif platform == "vip":
-            _audit_vip(output_root / "唯品会", report)
+            _audit_vip(directories[platform], report)
         elif platform == "fengxiang-aikucun":
-            _audit_fengxiang(output_root / "蜂享家＋爱库存", report)
+            _audit_fengxiang(directories[platform], report)
         elif platform == "offsite":
-            _audit_offsite(output_root / "站外通用版", report)
+            _audit_offsite(directories[platform], report)
 
 
 def _check_file_size(path: Path, max_kb: int, report: dict) -> None:

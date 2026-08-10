@@ -187,6 +187,8 @@ class FullWorkflowTests(unittest.TestCase):
             self.assertEqual(code, 0)
             material.assert_called_once()
             platform.assert_called_once()
+            self.assertEqual(platform.call_args.kwargs["product_code"], "KQ26143")
+            self.assertEqual(platform.call_args.kwargs["product_name"], "儿童长裤")
             business.assert_called_once()
             cleanup.assert_called_once_with(working)
             data = json.loads(report_path.read_text(encoding="utf-8"))

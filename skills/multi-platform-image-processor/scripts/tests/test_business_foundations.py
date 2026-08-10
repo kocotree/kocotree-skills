@@ -24,6 +24,7 @@ from common.product_matcher import (
 )
 from common.settings import resolve_business_paths
 from common.source_normalizer import create_local_copy, detect_source_kind
+from common.utils import build_platform_directory_names
 
 
 class BusinessSettingsTests(unittest.TestCase):
@@ -68,6 +69,12 @@ class BusinessSettingsTests(unittest.TestCase):
             missing = Path(temp_dir_value) / "不存在"
             with self.assertRaisesRegex(RuntimeError, "产品信息目录不可访问"):
                 require_accessible_directory(missing, "产品信息目录")
+
+    def test_jd_directory_name_uses_excel_identity(self) -> None:
+        """验证京东目录名包含 Excel 货号、空格和产品名称。"""
+        names = build_platform_directory_names("P100", "儿童外套")
+
+        self.assertEqual(names["jd"], "P100 儿童外套-京东")
 
 
 class ProductInfoTests(unittest.TestCase):
