@@ -125,8 +125,7 @@ def run_single(
             prune_report_files(report_path.parent)
             return 2, output, report_path
 
-        validation_assets_dir = report_path.parent / f"{report_path.stem}-assets" / "透明图问题"
-        validation = validate_source_pack(source, validation_assets_dir)
+        validation = validate_source_pack(source)
         report["输入包检测"] = validation
         report["素材扫描"] = scan_source_pack(source)
         for warning in validation["警告"]:

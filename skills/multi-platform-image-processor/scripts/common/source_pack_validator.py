@@ -1,15 +1,10 @@
 from __future__ import annotations
 
-import json
 import logging
-from collections import deque
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
-
 from .scan_source_pack import resolve_sku_root, resolve_source_path
-from .transparent_issue_visualizer import render_transparent_issue, render_transparent_overview
 from .utils import list_images
 
 
@@ -23,8 +18,6 @@ logger = logging.getLogger(__name__)
     "750主图": "750",
     "1440主图": "1440",
 }
-透明图规则路径 = Path(__file__).resolve().parents[1] / "config" / "透明图规则.json"
-
 标准输入结构 = """产品名称/
 └─ 数据包/
    ├─ 主图/
@@ -87,33 +80,24 @@ logger = logging.getLogger(__name__)
    └─ ..."""
 
 
-def validate_source_pack(
-    source_root: Path,
-    visualization_dir: Path | None = None,
-) -> dict[str, Any]:
-    """强制检查标准输入文件夹结构和透明图独立区域。
+def validate_source_pack(source_root: Path) -> dict[str, Any]:
+    """强制检查标准输入文件夹结构。
 
-    功能说明：检查标准目录名称、必需目录是否存在且包含图片，并检查每张
-    透明 PNG 是否具有透明通道，区分主体组成部分、待确认区域和脏点。
+    功能说明：检查标准目录名称、必需目录是否存在且包含图片，
+    并验证详情页目录结构。
 
     参数：
         source_root：待处理的数据包根目录。
-        visualization_dir：透明图独立区域诊断图输出目录；未提供时只返回坐标数据。
     返回值：
         包含“通过”“问题”“警告”和“识别目录”的结构化检测结果。
     """
     problems: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
     recognized: dict[str, dict[str, Any]] = {}
-    logger.info("开始强制检测输入包结构和透明图：%s", source_root)
+    logger.info("开始强制检测输入包结构：%s", source_root)
 
     if not source_root.is_dir():
         _add_problem(problems, "数据包目录不存在", source_root)
-        return _result(problems, warnings, recognized)
-
-    transparent_rules = _load_transparent_detection_rules(problems)
-    if transparent_rules is None:
-        logger.error("透明图检测规则加载失败，停止输入包检测：%s", 透明图规则路径)
         return _result(problems, warnings, recognized)
 
     _check_misnamed_main_directories(source_root, problems)
@@ -139,32 +123,9 @@ def validate_source_pack(
     _check_detail_directory(source_root, problems, recognized)
     _check_optional_material_directory(source_root, warnings, recognized)
 
-    diagnostic_paths = []
-    transparent_path = resolve_source_path(source_root, "透明图")
-    transparent_images = list_images(transparent_path)
-    for image_path in transparent_images:
-        diagnostic_path = _check_transparent_image(
-            image_path,
-            problems,
-            warnings,
-            visualization_dir,
-            transparent_rules,
-        )
-        if diagnostic_path:
-            diagnostic_paths.append(diagnostic_path)
-
     result = _result(problems, warnings, recognized)
-    result["透明图检测规则"] = {
-        "配置文件": str(透明图规则路径),
-        "规则": transparent_rules,
-    }
-    if diagnostic_paths:
-        result["透明图诊断图"] = [str(path) for path in diagnostic_paths]
-        overview = render_transparent_overview(diagnostic_paths, visualization_dir or diagnostic_paths[0].parent)
-        if overview:
-            result["透明图问题汇总"] = str(overview)
     if result["通过"]:
-        logger.info("输入包结构和透明图检测通过：%s", source_root)
+        logger.info("输入包结构检测通过：%s", source_root)
     else:
         logger.error("输入包检测失败：%s，共%d项问题", source_root, len(problems))
     return result
@@ -401,346 +362,6 @@ def _check_optional_material_directory(
     recognized["素材图"] = {"目录": str(material_path), "图片数量": len(images)}
     if not images:
         warnings.append({"信息": "可选目录素材图为空", "路径": str(material_path)})
-
-
-def _check_transparent_image(
-    image_path: Path,
-    problems: list[dict[str, Any]],
-    warnings: list[dict[str, Any]],
-    visualization_dir: Path | None,
-    rules: dict[str, Any],
-) -> Path | None:
-    """检查透明图中的主体组成部分和独立残留。
-
-    功能说明：读取透明通道并分类所有独立区域；显著区域作为主体组成部分，
-    极小区域作为脏点，中间区域要求调整 Skill 规则或清理图片。
-    参数：
-        image_path：待检查的透明图片路径。
-        problems：用于追加阻断问题的列表。
-        warnings：用于追加多主体提示的列表。
-        visualization_dir：诊断图输出目录；为空时不生成诊断图。
-        rules：从 Skill 配置文件加载的通用透明图检测规则。
-    返回值：
-        生成的诊断图路径；没有阻断问题或未生成诊断图时返回 None。
-    """
-    try:
-        with Image.open(image_path) as image:
-            image_format = (image.format or image_path.suffix.lstrip(".")).upper()
-            rgba = image.convert("RGBA")
-            alpha = rgba.getchannel("A")
-    except Exception as exc:
-        _add_problem(problems, "透明图无法读取", image_path, str(exc))
-        return None
-
-    if image_format != "PNG":
-        _add_problem(problems, f"透明图必须为PNG，实际为{image_format}", image_path)
-    minimum, maximum = alpha.getextrema()
-    if minimum == maximum == 255:
-        _add_problem(problems, "透明图没有实际透明背景", image_path)
-        return None
-    alpha_threshold = rules["透明可见阈值"]
-    components = _alpha_components(alpha, alpha_threshold)
-    if not components:
-        _add_problem(problems, "透明图没有可见主体", image_path)
-        return None
-
-    subjects, debris, uncertain = _classify_transparent_components(components, rules)
-    classification = "Skill规则"
-
-    logger.info(
-        "透明图独立区域分类完成 path=%r total=%d subjects=%d uncertain=%d debris=%d method=%s",
-        str(image_path),
-        len(components),
-        len(subjects),
-        len(uncertain),
-        len(debris),
-        classification,
-        extra={
-            "stage": "输入检测",
-            "event": "透明图独立区域分类",
-            "status": "success" if not debris and not uncertain else "failed",
-        },
-    )
-    if len(subjects) > 1:
-        warnings.append({
-            "信息": "透明图包含多个主体组成部分",
-            "路径": str(image_path),
-            "主体区域数": len(subjects),
-            "主体边界": [item["边界"] for item in subjects],
-            "判定方式": classification,
-        })
-
-    issue_regions = [*debris, *uncertain]
-    diagnostic_path = None
-    if issue_regions and visualization_dir is not None:
-        diagnostic_path = render_transparent_issue(
-            image_path,
-            rgba,
-            alpha,
-            issue_regions,
-            visualization_dir,
-            alpha_threshold=alpha_threshold,
-        )
-
-    if debris:
-        message = "透明图主体外存在独立残留像素"
-        suggestion = "请清理主体外脏点后重新处理"
-        extra = {
-            "主体外独立区域数": len(debris),
-            "主体外像素数": sum(item["像素数"] for item in debris),
-            "最大残留透明度": max(item["最大透明度"] for item in debris),
-            "残留边界": [item["边界"] for item in debris[:20]],
-        }
-        if diagnostic_path:
-            extra["可视化诊断图"] = str(diagnostic_path)
-        _add_problem(
-            problems,
-            message,
-            image_path,
-            suggestion,
-            **extra,
-        )
-    if uncertain:
-        _add_problem(
-            problems,
-            "透明图存在无法自动判断的独立区域",
-            image_path,
-            "请清理该区域；如需调整通用判定边界，请由管理员修改 Skill 的透明图规则",
-            待确认区域数=len(uncertain),
-            待确认区域=[_component_report(item) for item in uncertain],
-            规则文件=str(透明图规则路径),
-            **({"可视化诊断图": str(diagnostic_path)} if diagnostic_path else {}),
-        )
-    return diagnostic_path
-
-
-def _load_transparent_detection_rules(
-    problems: list[dict[str, Any]],
-) -> dict[str, Any] | None:
-    """读取 Skill 自带的透明图检测规则。
-
-    功能说明：读取并校验 Skill 配置目录中的通用透明图阈值，供所有产品
-    使用同一套主体、脏点和透明度判断边界。
-    参数：
-        problems：用于追加 Skill 配置问题的列表。
-    返回值：
-        校验通过的规则字典；配置缺失或无效时返回 None。
-    """
-    config_path = 透明图规则路径
-    logger.info("开始加载 Skill 透明图检测规则：%s", config_path)
-    if not config_path.is_file():
-        _add_problem(
-            problems,
-            "Skill 透明图规则文件不存在",
-            config_path,
-            "请联系管理员恢复 Skill 配置文件",
-        )
-        return None
-    try:
-        data = json.loads(config_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        logger.error("Skill 透明图规则读取失败 path=%r error=%s", str(config_path), exc)
-        _add_problem(problems, "Skill 透明图规则无法读取", config_path, str(exc))
-        return None
-
-    try:
-        normalized = {
-            "透明可见阈值": _require_integer(data, "透明可见阈值", 0, 254),
-            "明显主体": {
-                "最小面积比例": _require_ratio(data, "明显主体", "最小面积比例"),
-                "细长区域最小面积比例": _require_ratio(
-                    data,
-                    "明显主体",
-                    "细长区域最小面积比例",
-                ),
-                "细长区域最小长边比例": _require_ratio(
-                    data,
-                    "明显主体",
-                    "细长区域最小长边比例",
-                ),
-            },
-            "明显脏点": {
-                "最大像素数": _require_nested_integer(
-                    data,
-                    "明显脏点",
-                    "最大像素数",
-                    0,
-                ),
-                "最大面积比例": _require_ratio(data, "明显脏点", "最大面积比例"),
-                "最大长边比例": _require_ratio(data, "明显脏点", "最大长边比例"),
-            },
-        }
-        _validate_rule_boundaries(normalized)
-    except (KeyError, TypeError, ValueError) as exc:
-        logger.error("Skill 透明图规则校验失败 path=%r error=%s", str(config_path), exc)
-        _add_problem(
-            problems,
-            "Skill 透明图规则无效",
-            config_path,
-            str(exc),
-        )
-        return None
-    logger.info("Skill 透明图检测规则加载完成 path=%r", str(config_path))
-    return normalized
-
-
-def _require_integer(data: Any, key: str, minimum: int, maximum: int) -> int:
-    """读取并校验顶层整数配置。"""
-    if not isinstance(data, dict):
-        raise TypeError("配置根节点必须是对象")
-    value = data[key]
-    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
-        raise ValueError(f"{key} 必须是 {minimum} 到 {maximum} 的整数")
-    return value
-
-
-def _require_nested_integer(
-    data: Any,
-    section: str,
-    key: str,
-    minimum: int,
-) -> int:
-    """读取并校验分组中的整数配置。"""
-    if not isinstance(data, dict) or not isinstance(data.get(section), dict):
-        raise TypeError(f"{section} 必须是对象")
-    value = data[section][key]
-    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise ValueError(f"{section}.{key} 必须是不小于 {minimum} 的整数")
-    return value
-
-
-def _require_ratio(data: Any, section: str, key: str) -> float:
-    """读取并校验零到一之间的比例配置。"""
-    if not isinstance(data, dict) or not isinstance(data.get(section), dict):
-        raise TypeError(f"{section} 必须是对象")
-    value = data[section][key]
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 1:
-        raise ValueError(f"{section}.{key} 必须是 0 到 1 之间的数字")
-    return float(value)
-
-
-def _validate_rule_boundaries(rules: dict[str, Any]) -> None:
-    """校验主体与脏点阈值之间保留明确的待确认区间。"""
-    subject = rules["明显主体"]
-    debris = rules["明显脏点"]
-    if debris["最大面积比例"] >= subject["细长区域最小面积比例"]:
-        raise ValueError("明显脏点.最大面积比例必须小于明显主体.细长区域最小面积比例")
-    if debris["最大长边比例"] >= subject["细长区域最小长边比例"]:
-        raise ValueError("明显脏点.最大长边比例必须小于明显主体.细长区域最小长边比例")
-
-
-def _classify_transparent_components(
-    components: list[dict[str, Any]],
-    rules: dict[str, Any],
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    """将透明图独立区域分类为主体、脏点和待确认区域。
-
-    功能说明：以最大区域为主主体，结合面积比例和边界长边比例判断其他
-    区域；明显区域作为主体组成部分，极小区域作为脏点，其余区域待确认。
-    参数：
-        components：按像素数从大到小排序的透明区域。
-        rules：从 Skill 配置文件加载的通用透明图检测规则。
-    返回值：
-        主体区域、脏点区域和待确认区域三个列表。
-    """
-    main = components[0]
-    main_pixels = max(1, main["像素数"])
-    main_long_edge = max(1, _component_long_edge(main))
-    subjects = [main]
-    debris = []
-    uncertain = []
-    subject_rules = rules["明显主体"]
-    debris_rules = rules["明显脏点"]
-    for component in components[1:]:
-        area_ratio = component["像素数"] / main_pixels
-        long_edge_ratio = _component_long_edge(component) / main_long_edge
-        component["面积占主主体比例"] = round(area_ratio, 6)
-        component["长边占主主体比例"] = round(long_edge_ratio, 6)
-        is_subject = (
-            area_ratio >= subject_rules["最小面积比例"]
-            or (
-                area_ratio >= subject_rules["细长区域最小面积比例"]
-                and long_edge_ratio >= subject_rules["细长区域最小长边比例"]
-            )
-        )
-        is_debris = (
-            component["像素数"] <= debris_rules["最大像素数"]
-            or (
-                area_ratio <= debris_rules["最大面积比例"]
-                and long_edge_ratio <= debris_rules["最大长边比例"]
-            )
-        )
-        if is_subject:
-            subjects.append(component)
-        elif is_debris:
-            debris.append(component)
-        else:
-            uncertain.append(component)
-    return subjects, debris, uncertain
-
-
-def _component_long_edge(component: dict[str, Any]) -> int:
-    """返回连通区域边界框的长边像素数。"""
-    left, top, right, bottom = component["边界"]
-    return max(right - left, bottom - top)
-
-
-def _component_report(component: dict[str, Any]) -> dict[str, Any]:
-    """返回适合写入报告的连通区域摘要。"""
-    return {
-        key: value
-        for key, value in component.items()
-        if key != "起点"
-    }
-
-
-def _alpha_components(
-    alpha: Image.Image,
-    threshold: int,
-) -> list[dict[str, Any]]:
-    """提取透明通道中所有八邻域可见连通区域。
-
-    参数：
-        alpha：待分析的透明通道。
-        threshold：视为可见像素的最小透明度，不超过该值时按透明处理。
-    返回值：
-        按像素数从大到小排序的独立区域信息。
-    """
-    width, height = alpha.size
-    values = alpha.tobytes()
-    seen = bytearray(width * height)
-    components = []
-    for start, value in enumerate(values):
-        if value <= threshold or seen[start]:
-            continue
-        seen[start] = 1
-        queue = deque([start])
-        count = 0
-        min_x = max_x = start % width
-        min_y = max_y = start // width
-        max_alpha = 0
-        while queue:
-            current = queue.popleft()
-            x = current % width
-            y = current // width
-            count += 1
-            min_x, max_x = min(min_x, x), max(max_x, x)
-            min_y, max_y = min(min_y, y), max(max_y, y)
-            max_alpha = max(max_alpha, values[current])
-            for neighbor_y in range(max(0, y - 1), min(height, y + 2)):
-                base = neighbor_y * width
-                for neighbor_x in range(max(0, x - 1), min(width, x + 2)):
-                    neighbor = base + neighbor_x
-                    if values[neighbor] > threshold and not seen[neighbor]:
-                        seen[neighbor] = 1
-                        queue.append(neighbor)
-        components.append({
-            "像素数": count,
-            "边界": [min_x, min_y, max_x + 1, max_y + 1],
-            "最大透明度": max_alpha,
-            "起点": [start % width, start // width],
-        })
-    return sorted(components, key=lambda item: item["像素数"], reverse=True)
 
 
 def _add_problem(
