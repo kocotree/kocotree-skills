@@ -23,7 +23,6 @@ from common.product_matcher import (
     select_bartender_file,
 )
 from common.settings import resolve_business_paths
-from common.source_normalizer import create_local_copy, detect_source_kind
 from common.utils import build_platform_directory_names, 平台模板目录名
 
 
@@ -184,25 +183,8 @@ class ProductMatcherTests(unittest.TestCase):
             self.assertIn("名称不一致", result.reason)
 
 
-class SourceAndFontTests(unittest.TestCase):
-    """验证工作副本隔离和 Skill 字体资产。"""
-
-    def test_source_copy_preserves_original(self) -> None:
-        """验证产品数据包始终在本地副本中处理。"""
-        with TemporaryDirectory() as temp_dir_value:
-            root = Path(temp_dir_value)
-            product = root / "产品A"
-            data_pack = product / "数据包"
-            data_pack.mkdir(parents=True)
-            (data_pack / "源文件.txt").write_text("原始", encoding="utf-8")
-            self.assertEqual(detect_source_kind(product), "product")
-
-            copied = create_local_copy(product, root / "工作区")
-            (copied.working_copy / "数据包" / "源文件.txt").write_text(
-                "副本",
-                encoding="utf-8",
-            )
-            self.assertEqual((data_pack / "源文件.txt").read_text(encoding="utf-8"), "原始")
+class FontAssetTests(unittest.TestCase):
+    """验证 Skill 字体资产。"""
 
     def test_all_font_assets_load_and_cover_roles(self) -> None:
         """验证四个字体文件的内部名称和必需字形。"""

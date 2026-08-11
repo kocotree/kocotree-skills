@@ -91,6 +91,7 @@ def run_single(
     product_code: str = "",
     product_name: str = "",
     detail_plan: Path | None = None,
+    detail_overrides: dict[Path, Path] | None = None,
 ) -> tuple[int, Path, Path]:
     """处理单个产品并生成六平台图片与报告。
 
@@ -102,6 +103,7 @@ def run_single(
         product_code：Excel 确认的产品货号，用于构造京东目录名。
         product_name：Excel 确认的产品名称，用于构造京东目录名。
         detail_plan：Agent 视觉检查生成的详情模块计划路径。
+        detail_overrides：原始详情图到临时面料修正版的映射。
     返回值：
         退出码、实际输出目录和主报告路径。
     """
@@ -163,7 +165,7 @@ def run_single(
         for key in 全部平台:
             copy_template_empty_dirs(template, 平台模板目录名[key], platform_directories[key])
 
-        tmall_dir = build_tmall(source, output, report, detail_plan)
+        tmall_dir = build_tmall(source, output, report, detail_plan, detail_overrides)
         derive_cbme(source, tmall_dir, output, report)
         derive_jd(source, tmall_dir, platform_directories["jd"], report)
         derive_vip(source, tmall_dir, output, report)

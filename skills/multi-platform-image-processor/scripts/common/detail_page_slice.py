@@ -109,6 +109,7 @@ def prepare_ordered_detail_sources(
     plan_path: Path,
     staging_dir: Path,
     report: dict,
+    source_overrides: dict[Path, Path] | None = None,
 ) -> list[Path]:
     """根据 Agent 视觉计划校验、拆分并排序详情页模块。
 
@@ -117,6 +118,7 @@ def prepare_ordered_detail_sources(
         plan_path：Agent 生成的详情页模块 JSON 计划路径。
         staging_dir：需要拆分的模块临时输出目录。
         report：用于记录模块顺序和校验结果的报告。
+        source_overrides：原始详情图到临时修正版的可选映射。
     返回值：
         按业务顺序排列的原图或水平拆分图路径。
     """
@@ -162,15 +164,20 @@ def prepare_ordered_detail_sources(
         raise RuntimeError(f"详情页缺少必需模块：{missing_types}")
 
     ordered = sorted(parsed, key=lambda item: (详情模块顺序[item["类型"]], item["原顺序"]))
+    overrides = {
+        source.resolve(): replacement
+        for source, replacement in (source_overrides or {}).items()
+    }
     ensure_dir(staging_dir)
     outputs: list[Path] = []
     sequence: list[dict] = []
     for index, item in enumerate(ordered, start=1):
         source = item["源图"]
+        render_source = overrides.get(source.resolve(), source)
         box = item["区域"]
-        output = source
+        output = render_source
         if box is not None:
-            with Image.open(source) as image:
+            with Image.open(render_source) as image:
                 output = staging_dir / f"{index:03d}.png"
                 image.crop(box).save(output, "PNG")
         outputs.append(output)
@@ -179,6 +186,7 @@ def prepare_ordered_detail_sources(
                 "顺序": index,
                 "类型": item["类型"],
                 "源图": str(source),
+                "面料已修正": render_source != source,
                 "区域": list(box) if box is not None else [],
             }
         )

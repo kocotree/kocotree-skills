@@ -13,7 +13,6 @@ import main as main_module
 from common.delivery_quality_audit import audit_business_images
 from common.product_info_reader import ProductInfoRecord
 from common.product_matcher import MatchResult
-from common.source_normalizer import SourceCopy
 from common.workflow_report import new_workflow_report, write_workflow_report
 from workflows.full_package import run_full_workflow
 from workflows.material_correction import apply_material_plan
@@ -98,8 +97,8 @@ class WorkflowReportTests(unittest.TestCase):
 class MaterialPlanTests(unittest.TestCase):
     """验证 Agent 视觉计划驱动局部面料修正。"""
 
-    def test_material_plan_updates_relative_image(self) -> None:
-        """验证相对路径计划完成内容比较和局部重绘。"""
+    def test_material_plan_outputs_correction_without_changing_source(self) -> None:
+        """验证面料修正版进入临时目录且原图保持不变。"""
         with TemporaryDirectory() as temp_dir_value:
             root = Path(temp_dir_value)
             detail = root / "数据包" / "详情" / "静态" / "601.png"
@@ -126,12 +125,24 @@ class MaterialPlanTests(unittest.TestCase):
                 encoding="utf-8",
             )
             report = new_workflow_report("material", root, root)
+            original_bytes = detail.read_bytes()
+            staging = root / "临时修正版"
 
-            result = apply_material_plan(root, "棉95%氨纶5%", plan, report)
+            replacements = apply_material_plan(
+                root,
+                "棉95%氨纶5%",
+                plan,
+                staging,
+                report,
+            )
 
-            self.assertTrue(result)
+            self.assertIsNotNone(replacements)
             self.assertFalse(report["失败项"])
             self.assertTrue(report["面料检查"]["检查项"][0]["已修改"])
+            self.assertEqual(detail.read_bytes(), original_bytes)
+            corrected = replacements[detail.resolve()]
+            self.assertTrue(corrected.is_file())
+            self.assertNotEqual(corrected.read_bytes(), original_bytes)
 
 
 class FullWorkflowTests(unittest.TestCase):
@@ -191,7 +202,7 @@ class FullWorkflowTests(unittest.TestCase):
             self.assertEqual(report["处理配置"]["产品名"], "儿童长裤")
 
     def test_full_workflow_orchestrates_all_layers(self) -> None:
-        """验证完整流程汇总平台子报告并清理成功的临时副本。"""
+        """验证完整流程使用原始输入和临时修正版生成交付包。"""
         with TemporaryDirectory() as temp_dir_value:
             root = Path(temp_dir_value)
             source = root / "产品" / "数据包"
@@ -219,8 +230,6 @@ class FullWorkflowTests(unittest.TestCase):
                 2,
                 {"产品货号": "KQ26143", "产品名称": "儿童长裤", "中文面料": "棉95%氨纶5%"},
             )
-            working = SourceCopy(source, root / "working" / "数据包", "data-pack")
-            working.working_copy.mkdir(parents=True)
             args = SimpleNamespace(
                 source=str(source),
                 output=str(output),
@@ -238,21 +247,15 @@ class FullWorkflowTests(unittest.TestCase):
                 "workflows.full_package.find_product_info",
                 return_value=MatchResult(record, [record], "唯一"),
             ), patch(
-                "workflows.full_package.create_local_copy",
-                return_value=working,
-            ), patch(
                 "workflows.full_package.apply_material_plan",
-                return_value=True,
+                return_value={},
             ) as material, patch(
                 "workflows.full_package.run_single",
                 return_value=(0, output / "产品", platform_report),
             ) as platform, patch(
                 "workflows.full_package.generate_business_images",
                 return_value=True,
-            ) as business, patch(
-                "workflows.full_package.cleanup_local_copy",
-                return_value=True,
-            ) as cleanup:
+            ) as business:
                 resolve_paths.return_value.product_info_root = root
                 resolve_paths.return_value.certificate_root = root
                 code = run_full_workflow(args)
@@ -262,8 +265,11 @@ class FullWorkflowTests(unittest.TestCase):
             platform.assert_called_once()
             self.assertEqual(platform.call_args.kwargs["product_code"], "KQ26143")
             self.assertEqual(platform.call_args.kwargs["product_name"], "儿童长裤")
+            self.assertEqual(platform.call_args.args[0], source.resolve())
+            self.assertEqual(platform.call_args.kwargs["detail_overrides"], {})
             business.assert_called_once()
-            cleanup.assert_called_once_with(working)
+            self.assertEqual(business.call_args.args[4], source.resolve())
+            self.assertFalse(material.call_args.args[3].exists())
             data = json.loads(report_path.read_text(encoding="utf-8"))
             self.assertEqual(data["工作流"]["完成状态"], "完成")
             self.assertEqual(data["平台子报告"]["报告路径"], str(platform_report))

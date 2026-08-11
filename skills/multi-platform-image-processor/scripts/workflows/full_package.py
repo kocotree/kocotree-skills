@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from common.nas_paths import require_accessible_directory, to_unc_path
@@ -13,7 +14,6 @@ from common.product_info_reader import (
 )
 from common.product_matcher import infer_product_code
 from common.settings import resolve_business_paths
-from common.source_normalizer import cleanup_local_copy, create_local_copy
 from common.workflow_report import (
     add_report_item,
     merge_platform_report,
@@ -43,7 +43,6 @@ def run_full_workflow(args: Any) -> int:
     output_root = Path(args.output).expanduser().resolve() if args.output else default_output_path()
     report = new_workflow_report("完整流程", source, output_root)
     report_path = default_business_report_path(product_code)
-    working_copy = None
     try:
         if not product_code:
             raise RuntimeError("无法从产品目录可靠识别货号，请提供 --product-code")
@@ -74,28 +73,34 @@ def run_full_workflow(args: Any) -> int:
         if not expected:
             raise RuntimeError("产品信息 Excel 缺少中文面料")
         report["面料检查"]["Excel中文原文"] = expected
-        working_copy = create_local_copy(source)
         report["路径"]["源UNC路径"] = str(to_unc_path(source))
-        report["路径"]["本地工作副本"] = str(working_copy.working_copy)
         plan_value = getattr(args, "material_plan", "")
         plan_path = Path(plan_value).expanduser().resolve() if plan_value else None
-        material_ok = apply_material_plan(working_copy.working_copy, expected, plan_path, report)
-        if not material_ok:
-            raise RuntimeError("详情页面料检查未完成，平台派生已停止")
+        with TemporaryDirectory(prefix="kocotree-material-") as staging_value:
+            detail_overrides = apply_material_plan(
+                source,
+                expected,
+                plan_path,
+                Path(staging_value),
+                report,
+            )
+            if detail_overrides is None:
+                raise RuntimeError("详情页面料检查未完成，平台派生已停止")
 
-        platform_report_path = report_path.with_name(f"{report_path.stem}-platform-report.json")
-        template = default_template_path()
-        detail_plan_value = getattr(args, "detail_plan", "")
-        detail_plan = Path(detail_plan_value).expanduser().resolve() if detail_plan_value else None
-        platform_code, product_output, actual_platform_report = run_single(
-            working_copy.working_copy,
-            template,
-            output_root,
-            platform_report_path,
-            product_code=confirmed_product_code,
-            product_name=confirmed_product_name,
-            detail_plan=detail_plan,
-        )
+            platform_report_path = report_path.with_name(f"{report_path.stem}-platform-report.json")
+            template = default_template_path()
+            detail_plan_value = getattr(args, "detail_plan", "")
+            detail_plan = Path(detail_plan_value).expanduser().resolve() if detail_plan_value else None
+            platform_code, product_output, actual_platform_report = run_single(
+                source,
+                template,
+                output_root,
+                platform_report_path,
+                product_code=confirmed_product_code,
+                product_name=confirmed_product_name,
+                detail_plan=detail_plan,
+                detail_overrides=detail_overrides,
+            )
         platform_report = json.loads(actual_platform_report.read_text(encoding="utf-8"))
         merge_platform_report(report, platform_report, actual_platform_report)
         report["路径"]["最终输出"] = str(product_output)
@@ -107,13 +112,11 @@ def run_full_workflow(args: Any) -> int:
             confirmed_product_code,
             confirmed_product_name,
             product_output,
-            working_copy.working_copy,
+            source,
             certificate_root,
             report,
         )
     except Exception as exc:
         add_report_item(report, "失败项", "完整流程执行失败", 错误=str(exc))
     write_workflow_report(report, report_path)
-    if working_copy is not None and not report["失败项"]:
-        cleanup_local_copy(working_copy)
     return 0 if not report["失败项"] else 1

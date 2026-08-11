@@ -170,8 +170,16 @@ class SourcePackValidatorTests(unittest.TestCase):
                 encoding="utf-8",
             )
             report: dict = {}
+            corrected = Path(temp_dir) / "修正版" / "04.jpg"
+            create_rgb(corrected, (790, 120))
 
-            outputs = prepare_ordered_detail_sources(root, plan_path, Path(temp_dir) / "staging", report)
+            outputs = prepare_ordered_detail_sources(
+                root,
+                plan_path,
+                Path(temp_dir) / "staging",
+                report,
+                {(static / "04.jpg").resolve(): corrected},
+            )
 
             self.assertEqual(
                 [item["类型"] for item in report["详情页模块"]["模块顺序"]],
@@ -180,6 +188,8 @@ class SourcePackValidatorTests(unittest.TestCase):
             with Image.open(outputs[2]) as icon, Image.open(outputs[5]) as explanation:
                 self.assertEqual(icon.size, (790, 100))
                 self.assertEqual(explanation.size, (790, 100))
+            self.assertEqual(outputs[3], corrected)
+            self.assertTrue(report["详情页模块"]["模块顺序"][3]["面料已修正"])
 
     def test_detail_plan_requires_every_business_module(self) -> None:
         """验证详情计划缺少必需模块时停止处理。"""

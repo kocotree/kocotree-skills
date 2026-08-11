@@ -14,7 +14,7 @@ Agent 调用脚本时使用以下隐藏参数传递视觉定位结果：
 
 - `--material-plan`：详情页面料区域 JSON 路径。
 - `--detail-plan`：逐张检查后的详情页模块分类与水平拆分 JSON 路径。
-- `--size-table-source`：实际尺码表所在详情图，使用工作副本内相对路径或绝对路径。
+- `--size-table-source`：实际尺码表所在详情图，使用输入产品目录内相对路径或绝对路径。
 - `--size-table-box`：排除标题和外框后的完整尺码表坐标，格式为 `left,top,right,bottom`。
 - `--visual-review-approved`：本轮任务包含三张业务图片原尺寸视觉复核。
 

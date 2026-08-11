@@ -12,7 +12,13 @@ from common.scan_source_pack import 源目录规则, get_image_group, get_sku800
 平台 = "天猫通用版"
 
 
-def build(source_root: Path, output_root: Path, report: dict, detail_plan: Path | None = None) -> Path:
+def build(
+    source_root: Path,
+    output_root: Path,
+    report: dict,
+    detail_plan: Path | None = None,
+    detail_overrides: dict[Path, Path] | None = None,
+) -> Path:
     """生成天猫通用版并建立六平台详情页母版。
 
     参数：
@@ -20,6 +26,7 @@ def build(source_root: Path, output_root: Path, report: dict, detail_plan: Path 
         output_root：六平台输出根目录。
         report：用于记录图片处理与异常的报告。
         detail_plan：Agent 视觉检查生成的详情模块计划路径。
+        detail_overrides：原始详情图到临时面料修正版的映射。
     返回值：
         天猫通用版输出目录路径。
     """
@@ -44,6 +51,7 @@ def build(source_root: Path, output_root: Path, report: dict, detail_plan: Path 
                 detail_plan,
                 Path(staging_value),
                 report,
+                detail_overrides,
             )
             detail_outputs = generate_sequential_detail_pages(
                 detail_sources,
