@@ -25,8 +25,8 @@ def _resolve_size_source(content_root: Path, value: str) -> Path:
 
 def generate_business_images(
     args: Any,
-    product_code: str,
     product_name: str,
+    representative_color: str,
     product_root: Path,
     content_root: Path,
     certificate_root: Path,
@@ -36,8 +36,8 @@ def generate_business_images(
 
     参数：
         args：包含 Agent 内部视觉定位结果的入口参数。
-        product_code：已确认的产品货号。
-        product_name：用于复核候选的产品名称。
+        product_name：产品信息 Excel 中的正式产品名称。
+        representative_color：产品信息 Excel 首个颜色或规格对应的代表颜色。
         product_root：业务图片输出产品目录。
         content_root：详情图相对路径解析根目录。
         certificate_root：BarTender 文件目录。
@@ -47,8 +47,8 @@ def generate_business_images(
     """
     match = select_bartender_file(
         certificate_root,
-        product_code,
         product_name,
+        representative_color,
     )
     report["BarTender导出"]["候选文件"] = [str(path) for path in match.candidates]
     report["BarTender导出"]["选择说明"] = match.reason
@@ -57,7 +57,7 @@ def generate_business_images(
         return False
     selected = Path(match.selected)
     report["BarTender导出"]["选中文件"] = str(selected)
-    report["BarTender导出"]["代表颜色"] = "按候选自然顺序选择"
+    report["BarTender导出"]["代表颜色"] = representative_color
     report["BarTender导出"]["代表尺码"] = extract_size(selected.stem)
     size_source_value = getattr(args, "size_table_source", "")
     size_box_value = getattr(args, "size_table_box", "")

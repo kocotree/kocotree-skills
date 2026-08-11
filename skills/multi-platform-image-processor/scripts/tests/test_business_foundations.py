@@ -14,6 +14,7 @@ from common.font_assets import load_font_assets, require_glyphs
 from common.nas_paths import require_accessible_directory, to_unc_path
 from common.product_info_reader import (
     extract_chinese_material,
+    extract_representative_color,
     find_product_info,
     read_product_records,
 )
@@ -109,6 +110,19 @@ class ProductInfoTests(unittest.TestCase):
                 sheet.write(row_index, column_index, value)
         workbook.save(str(path))
 
+    @staticmethod
+    def _write_specification_xls(path: Path) -> None:
+        workbook = xlwt.Workbook()
+        sheet = workbook.add_sheet("产品资料")
+        values = [
+            ["货号", "品名", "规格", "尺码", "成分"],
+            ["KQ26169", "小云暖抓绒马甲（按扣款）", "星夜蓝100", "100/48", "100%聚酯纤维"],
+        ]
+        for row_index, row in enumerate(values):
+            for column_index, value in enumerate(row):
+                sheet.write(row_index, column_index, value)
+        workbook.save(str(path))
+
     def test_reads_xlsx_xlsm_and_xls(self) -> None:
         """验证三种产品信息文件均可读取中文面料。"""
         with TemporaryDirectory() as temp_dir_value:
@@ -144,9 +158,21 @@ class ProductInfoTests(unittest.TestCase):
 
         self.assertEqual(extract_chinese_material(value), "成分：98.3%聚酯纤维\n1.7%氨纶")
 
+    def test_specification_and_size_remain_separate(self) -> None:
+        """验证真实产品表中的规格与尺码分别保留。"""
+        with TemporaryDirectory() as temp_dir_value:
+            path = Path(temp_dir_value) / "KQ26169.xls"
+            self._write_specification_xls(path)
+
+            record = read_product_records(path)[0]
+
+        self.assertEqual(record.get("规格"), "星夜蓝100")
+        self.assertEqual(record.get("尺码"), "100/48")
+        self.assertEqual(extract_representative_color(record), "星夜蓝")
+
 
 class ProductMatcherTests(unittest.TestCase):
-    """验证货号识别、边界和 BarTender 代表尺码选择。"""
+    """验证货号识别和 BarTender 产品目录、颜色、尺码选择。"""
 
     def test_product_code_requires_exact_boundary(self) -> None:
         """验证相邻的更长货号不会被当作精确匹配。"""
@@ -161,26 +187,43 @@ class ProductMatcherTests(unittest.TestCase):
         """验证优先 110 码且缺少时选择最小尺码。"""
         with TemporaryDirectory() as temp_dir_value:
             root = Path(temp_dir_value)
-            for name in ("KQ26143-蓝色-100.btw", "KQ26143-蓝色-110.btw"):
-                (root / name).write_bytes(b"btw")
-            preferred = select_bartender_file(root, "KQ26143")
-            (root / "KQ26143-蓝色-110.btw").unlink()
-            fallback = select_bartender_file(root, "KQ26143")
+            product = root / "儿童长裤"
+            product.mkdir()
+            for name in ("儿童长裤 蓝色100.btw", "儿童长裤 蓝色110.btw"):
+                (product / name).write_bytes(b"btw")
+            preferred = select_bartender_file(root, "儿童长裤", "蓝色")
+            (product / "儿童长裤 蓝色110.btw").unlink()
+            fallback = select_bartender_file(root, "儿童长裤", "蓝色")
 
-        self.assertEqual(preferred.selected.name, "KQ26143-蓝色-110.btw")
-        self.assertEqual(fallback.selected.name, "KQ26143-蓝色-100.btw")
+        self.assertEqual(preferred.selected.name, "儿童长裤 蓝色110.btw")
+        self.assertEqual(fallback.selected.name, "儿童长裤 蓝色100.btw")
         self.assertIn("最小尺码 100", fallback.reason)
 
-    def test_bartender_product_name_mismatch_is_blocked(self) -> None:
-        """验证 BarTender 货号候选与产品名称不一致时停止选择。"""
+    def test_only_top_level_bartender_file_is_selected(self) -> None:
+        """验证默认匹配不进入特殊版本子目录。"""
         with TemporaryDirectory() as temp_dir_value:
             root = Path(temp_dir_value)
-            (root / "KQ26143-儿童长裤-110.btw").write_bytes(b"btw")
+            product = root / "儿童长裤"
+            special = product / "委托商版"
+            special.mkdir(parents=True)
+            (product / "儿童长裤 蓝色110.btw").write_bytes(b"standard")
+            (special / "儿童长裤 蓝色110.btw").write_bytes(b"special")
 
-            result = select_bartender_file(root, "KQ26143", "儿童外套")
+            result = select_bartender_file(root, "儿童长裤", "蓝色")
 
-            self.assertIsNone(result.selected)
-            self.assertIn("名称不一致", result.reason)
+            self.assertEqual(result.selected, product / "儿童长裤 蓝色110.btw")
+            self.assertEqual(len(result.candidates), 1)
+
+    def test_missing_product_name_directory_is_blocked(self) -> None:
+        """验证正式产品名称没有对应一级目录时停止选择。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            (root / "儿童长裤").mkdir()
+
+            result = select_bartender_file(root, "儿童外套", "蓝色")
+
+        self.assertIsNone(result.selected)
+        self.assertIn("合格证目录", result.reason)
 
 
 class FontAssetTests(unittest.TestCase):

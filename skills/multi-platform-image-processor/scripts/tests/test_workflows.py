@@ -228,7 +228,12 @@ class FullWorkflowTests(unittest.TestCase):
                 root / "KQ26143.xlsx",
                 "产品资料",
                 2,
-                {"产品货号": "KQ26143", "产品名称": "儿童长裤", "中文面料": "棉95%氨纶5%"},
+                {
+                    "产品货号": "KQ26143",
+                    "产品名称": "儿童长裤",
+                    "中文面料": "棉95%氨纶5%",
+                    "规格": "蓝色110",
+                },
             )
             args = SimpleNamespace(
                 source=str(source),
@@ -268,7 +273,9 @@ class FullWorkflowTests(unittest.TestCase):
             self.assertEqual(platform.call_args.args[0], source.resolve())
             self.assertEqual(platform.call_args.kwargs["detail_overrides"], {})
             business.assert_called_once()
-            self.assertEqual(business.call_args.args[4], source.resolve())
+            self.assertEqual(business.call_args.kwargs["product_name"], "儿童长裤")
+            self.assertEqual(business.call_args.kwargs["representative_color"], "蓝色")
+            self.assertEqual(business.call_args.kwargs["content_root"], source.resolve())
             self.assertFalse(material.call_args.args[3].exists())
             data = json.loads(report_path.read_text(encoding="utf-8"))
             self.assertEqual(data["工作流"]["完成状态"], "完成")

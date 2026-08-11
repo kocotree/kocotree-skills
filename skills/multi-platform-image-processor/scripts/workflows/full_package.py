@@ -10,6 +10,7 @@ from common.nas_paths import require_accessible_directory, to_unc_path
 from common.product_info_reader import (
     ProductInfoRecord,
     extract_chinese_material,
+    extract_representative_color,
     find_product_info,
 )
 from common.product_matcher import infer_product_code
@@ -72,7 +73,11 @@ def run_full_workflow(args: Any) -> int:
         expected = extract_chinese_material(record.get("中文面料", ""))
         if not expected:
             raise RuntimeError("产品信息 Excel 缺少中文面料")
+        representative_color = extract_representative_color(record)
+        if not representative_color:
+            raise RuntimeError("产品信息 Excel 缺少可识别的代表颜色或规格")
         report["面料检查"]["Excel中文原文"] = expected
+        report["产品匹配"]["代表颜色"] = representative_color
         report["路径"]["源UNC路径"] = str(to_unc_path(source))
         plan_value = getattr(args, "material_plan", "")
         plan_path = Path(plan_value).expanduser().resolve() if plan_value else None
@@ -108,13 +113,13 @@ def run_full_workflow(args: Any) -> int:
             add_report_item(report, "失败项", "平台处理引擎存在失败项", 退出码=platform_code)
 
         generate_business_images(
-            args,
-            confirmed_product_code,
-            confirmed_product_name,
-            product_output,
-            source,
-            certificate_root,
-            report,
+            args=args,
+            product_name=confirmed_product_name,
+            representative_color=representative_color,
+            product_root=product_output,
+            content_root=source,
+            certificate_root=certificate_root,
+            report=report,
         )
     except Exception as exc:
         add_report_item(report, "失败项", "完整流程执行失败", 错误=str(exc))

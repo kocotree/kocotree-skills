@@ -20,7 +20,8 @@ DEFAULT_ALIASES = {
     "产品名称": {"产品名称", "品名", "商品名称", "名称"},
     "中文面料": {"中文面料", "中文面料信息", "面料", "成分", "材质", "面料成分"},
     "颜色": {"颜色", "颜色名称", "色名"},
-    "尺码": {"尺码", "规格", "规格尺码"},
+    "规格": {"规格", "规格尺码"},
+    "尺码": {"尺码"},
 }
 
 
@@ -55,6 +56,24 @@ def extract_chinese_material(value: object) -> str:
             break
         chinese_lines.append(line)
     return "\n".join(chinese_lines).strip()
+
+
+def extract_representative_color(record: ProductInfoRecord) -> str:
+    """从产品信息记录中读取代表颜色。
+
+    参数：
+        record：唯一匹配的产品信息记录。
+    返回值：
+        明确的颜色字段，或首个规格中移除末尾数字尺码后的颜色；无法识别时返回空字符串。
+    """
+    explicit_color = str(record.get("颜色", "")).strip()
+    if explicit_color:
+        return explicit_color
+    specification = str(record.get("规格", "")).strip().splitlines()[0]
+    if not specification:
+        return ""
+    color = re.sub(r"\s*\d{2,3}(?:\s*[/／-]\s*\d{2,3})?\s*$", "", specification)
+    return color.strip()
 
 
 def canonical_header(value: object, aliases: dict[str, set[str]]) -> str:
