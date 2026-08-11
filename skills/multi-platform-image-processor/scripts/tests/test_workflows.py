@@ -17,6 +17,7 @@ from common.source_normalizer import SourceCopy
 from common.workflow_report import new_workflow_report, write_workflow_report
 from workflows.full_package import run_full_workflow
 from workflows.material_correction import apply_material_plan
+from workflows.platform_processing import run_single
 
 
 class UnifiedEntryTests(unittest.TestCase):
@@ -135,6 +136,59 @@ class MaterialPlanTests(unittest.TestCase):
 
 class FullWorkflowTests(unittest.TestCase):
     """验证完整流程按面料、平台、业务图片顺序编排。"""
+
+    def test_platform_processing_preserves_confirmed_product_name(self) -> None:
+        """验证平台入口使用确认产品名称生成京东目录。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            source = root / "kocotree-pack-random" / "数据包"
+            source.mkdir(parents=True)
+            output_root = root / "输出"
+            report_path = root / "platform-report.json"
+            validation = {
+                "通过": True,
+                "问题": [],
+                "警告": [],
+                "识别目录": {},
+            }
+            with patch(
+                "workflows.platform_processing.validate_source_pack",
+                return_value=validation,
+            ), patch(
+                "workflows.platform_processing.scan_source_pack",
+                return_value={},
+            ), patch(
+                "workflows.platform_processing.copy_template_empty_dirs",
+            ), patch(
+                "workflows.platform_processing.build_tmall",
+                return_value=output_root / "天猫通用版",
+            ), patch(
+                "workflows.platform_processing.derive_cbme",
+            ), patch(
+                "workflows.platform_processing.derive_jd",
+            ) as derive_jd, patch(
+                "workflows.platform_processing.derive_vip",
+            ), patch(
+                "workflows.platform_processing.derive_fengxiang_aikucun",
+            ), patch(
+                "workflows.platform_processing.derive_offsite",
+            ), patch(
+                "workflows.platform_processing.run_quality_audit",
+            ):
+                code, output, _ = run_single(
+                    source,
+                    root / "模板",
+                    output_root,
+                    report_path,
+                    product_code="KQ26143",
+                    product_name="儿童长裤",
+                )
+
+            self.assertEqual(code, 0)
+            expected_jd = output / "KQ26143 儿童长裤-京东"
+            self.assertEqual(derive_jd.call_args.args[2], expected_jd)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(report["处理配置"]["产品名"], "儿童长裤")
 
     def test_full_workflow_orchestrates_all_layers(self) -> None:
         """验证完整流程汇总平台子报告并清理成功的临时副本。"""

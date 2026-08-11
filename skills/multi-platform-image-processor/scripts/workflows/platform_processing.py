@@ -105,18 +105,30 @@ def run_single(
     返回值：
         退出码、实际输出目录和主报告路径。
     """
-    source, output, product_name = resolve_source_and_output(source_arg, output_arg)
+    source, output, source_product_name = resolve_source_and_output(source_arg, output_arg)
+    effective_product_name = product_name.strip() or source_product_name
     report_path = report_override or default_report_path(output)
     run_id = report_artifact_prefix(report_path)
-    display_product = product_name or source.parent.name or source.name
+    display_product = effective_product_name or source.parent.name or source.name
     log_path = configure_run_file_logging(default_run_log_path(report_path), run_id, display_product)
     report = new_report(source, template, output, "all")
     report["处理配置"]["运行ID"] = run_id
     report["追溯文件"]["运行日志"] = str(log_path)
-    if product_name:
-        report["处理配置"]["产品名"] = product_name
+    if effective_product_name:
+        report["处理配置"]["产品名"] = effective_product_name
         report["处理配置"]["源参数目录"] = str(source_arg)
         report["处理配置"]["输出根目录"] = str(output_arg)
+    if product_name.strip():
+        logger.info(
+            "平台目录使用已确认产品身份 code=%s name=%s",
+            product_code,
+            effective_product_name,
+        )
+    else:
+        logger.warning(
+            "未提供确认产品名称，平台目录使用源目录名称 name=%s",
+            effective_product_name,
+        )
     logger.info("六平台任务开始 source=%r output=%r", str(source), str(output))
     try:
         if not source.exists():
@@ -143,7 +155,7 @@ def run_single(
             return 2, output, report_path
 
         ensure_dir(output)
-        directory_names = build_platform_directory_names(product_code, product_name)
+        directory_names = build_platform_directory_names(product_code, effective_product_name)
         platform_directories = {
             key: output / directory_names[key]
             for key in 全部平台
