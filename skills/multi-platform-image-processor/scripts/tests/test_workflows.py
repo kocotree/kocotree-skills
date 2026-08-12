@@ -11,6 +11,7 @@ from PIL import Image
 
 import main as main_module
 from common.delivery_quality_audit import audit_business_images
+from common.material_editor import verify_non_target_unchanged
 from common.product_info_reader import ProductInfoRecord
 from common.product_matcher import MatchResult
 from common.workflow_report import new_workflow_report, write_workflow_report
@@ -132,15 +133,20 @@ class MaterialPlanTests(unittest.TestCase):
             original_bytes = detail.read_bytes()
             staging = root / "临时修正版"
 
-            replacements = apply_material_plan(
-                root,
-                "棉95%氨纶5%",
-                plan,
-                staging,
-                report,
-            )
+            with patch(
+                "workflows.material_correction.verify_non_target_unchanged",
+                wraps=verify_non_target_unchanged,
+            ) as verifier:
+                replacements = apply_material_plan(
+                    root,
+                    "棉95%氨纶5%",
+                    plan,
+                    staging,
+                    report,
+                )
 
             self.assertIsNotNone(replacements)
+            self.assertEqual(verifier.call_args.kwargs["difference_threshold"], 15)
             self.assertFalse(report["失败项"])
             self.assertTrue(report["面料检查"]["检查项"][0]["已修改"])
             self.assertEqual(detail.read_bytes(), original_bytes)
