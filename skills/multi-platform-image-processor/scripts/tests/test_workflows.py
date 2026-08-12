@@ -288,6 +288,7 @@ class FullWorkflowTests(unittest.TestCase):
             business.assert_called_once()
             self.assertEqual(business.call_args.kwargs["product_name"], "儿童长裤")
             self.assertEqual(business.call_args.kwargs["representative_color"], "蓝色")
+            self.assertEqual(business.call_args.kwargs["fabric_text"], "棉95%氨纶5%")
             self.assertEqual(business.call_args.kwargs["content_root"], source.resolve())
             self.assertFalse(material.call_args.args[3].exists())
             data = json.loads(report_path.read_text(encoding="utf-8"))

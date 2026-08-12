@@ -28,6 +28,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--detail-plan", default="", help=argparse.SUPPRESS)
     parser.add_argument("--size-table-source", default="", help=argparse.SUPPRESS)
     parser.add_argument("--size-table-box", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--certificate-fabric-anchor", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--certificate-fabric-font-size", type=int, default=0, help=argparse.SUPPRESS)
     parser.add_argument("--visual-review-approved", action="store_true", help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 

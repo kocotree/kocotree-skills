@@ -116,6 +116,7 @@ def run_full_workflow(args: Any) -> int:
             args=args,
             product_name=confirmed_product_name,
             representative_color=representative_color,
+            fabric_text=expected,
             product_root=product_output,
             content_root=source,
             certificate_root=certificate_root,

@@ -29,6 +29,26 @@ def parse_box(value: str, label: str) -> tuple[int, int, int, int]:
     return numbers
 
 
+def parse_point(value: str, label: str) -> tuple[int, int]:
+    """解析逗号分隔的非负二维坐标。
+
+    参数：
+        value：格式为 `x,y` 的坐标文本。
+        label：错误信息中使用的业务名称。
+    返回值：
+        横坐标和纵坐标组成的二元组。
+    """
+    try:
+        numbers = tuple(int(part.strip()) for part in value.split(","))
+    except ValueError as exc:
+        raise RuntimeError(f"{label}必须是两个逗号分隔整数") from exc
+    if len(numbers) != 2:
+        raise RuntimeError(f"{label}必须是 x,y")
+    if any(number < 0 for number in numbers):
+        raise RuntimeError(f"{label}不能是负数")
+    return numbers
+
+
 def record_to_dict(record: ProductInfoRecord) -> dict[str, Any]:
     """将产品信息记录转换为可写入 JSON 的对象。"""
     return {

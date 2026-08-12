@@ -108,6 +108,25 @@ class BusinessImageComposerTests(unittest.TestCase):
             self.assertLessEqual(certificate.stat().st_size, 500 * 1024)
             self.assertLessEqual(hangtag.stat().st_size, 500 * 1024)
 
+    def test_certificate_includes_excel_chinese_material(self) -> None:
+        """验证合格证图使用方正字体加入中文面料。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            source = root / "export.png"
+            self._make_certificate(source)
+            output = compose_certificate(
+                source,
+                root / "合格证" / "合格证图.jpg",
+                fabric_text="面料：棉95%氨纶5%",
+                fabric_anchor=(360, 100),
+                fabric_font=load_font_assets()["方正兰亭中黑"],
+                font_size=20,
+            )
+
+            with Image.open(output) as image:
+                self.assertEqual(image.size, (750, 1600))
+            self.assertLessEqual(output.stat().st_size, 500 * 1024)
+
     def test_size_table_crop_and_size_image_are_complete(self) -> None:
         """验证显式裁切保留表格底边并生成 800×800 尺码图。"""
         with TemporaryDirectory() as temp_dir_value:

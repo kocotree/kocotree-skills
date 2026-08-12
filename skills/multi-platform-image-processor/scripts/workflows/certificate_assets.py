@@ -8,11 +8,12 @@ from typing import Any
 from common.bartender_exporter import export_bartender_image
 from common.certificate_composer import compose_certificate, compose_hangtag
 from common.delivery_quality_audit import audit_business_images
+from common.font_assets import load_font_assets
 from common.product_matcher import extract_size, select_bartender_file
 from common.size_table_extractor import CropBox, compose_size_image, extract_size_table
 from common.workflow_report import add_report_item
 
-from .business_support import parse_box
+from .business_support import parse_box, parse_point
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ def generate_business_images(
     args: Any,
     product_name: str,
     representative_color: str,
+    fabric_text: str,
     product_root: Path,
     content_root: Path,
     certificate_root: Path,
@@ -38,6 +40,7 @@ def generate_business_images(
         args：包含 Agent 内部视觉定位结果的入口参数。
         product_name：产品信息 Excel 中的正式产品名称。
         representative_color：产品信息 Excel 首个颜色或规格对应的代表颜色。
+        fabric_text：产品信息 Excel 中的中文面料原文。
         product_root：业务图片输出产品目录。
         content_root：详情图相对路径解析根目录。
         certificate_root：BarTender 文件目录。
@@ -71,6 +74,22 @@ def generate_business_images(
             }
         )
         return False
+    fabric_anchor_value = getattr(args, "certificate_fabric_anchor", "")
+    fabric_font_size = getattr(args, "certificate_fabric_font_size", 0)
+    if not fabric_anchor_value or fabric_font_size <= 0:
+        add_report_item(report, "失败项", "缺少合格证等级字段下方面料锚点或字号")
+        report["Agent复核建议"].append(
+            {
+                "任务名称": "定位合格证中文面料区域",
+                "图片路径": [str(selected)],
+                "原因": "需要确认等级字段下方的左上锚点和相邻正文字号",
+            }
+        )
+        return False
+    fabric_anchor = parse_point(fabric_anchor_value, "合格证面料锚点")
+    fabric_font = load_font_assets()["方正兰亭中黑"]
+    report["BarTender导出"]["合格证面料锚点"] = list(fabric_anchor)
+    report["BarTender导出"]["合格证面料字号"] = fabric_font_size
     size_source = _resolve_size_source(content_root, size_source_value)
     if not size_source.is_file():
         add_report_item(report, "失败项", "尺码表详情图不存在", 文件=str(size_source))
@@ -85,12 +104,20 @@ def generate_business_images(
             certificate_path = compose_certificate(
                 exported,
                 product_root / "合格证" / "合格证图.jpg",
+                fabric_text=fabric_text,
+                fabric_anchor=fabric_anchor,
+                fabric_font=fabric_font,
+                font_size=fabric_font_size,
             )
             hangtag_path = compose_hangtag(
                 exported,
                 product_root / "吊牌图" / "吊牌图.jpg",
             )
-            report["业务图片"]["合格证图"] = {"状态": "成功", "路径": str(certificate_path)}
+            report["业务图片"]["合格证图"] = {
+                "状态": "成功",
+                "路径": str(certificate_path),
+                "中文面料": fabric_text,
+            }
             report["业务图片"]["吊牌图"] = {"状态": "成功", "路径": str(hangtag_path)}
             size_path = compose_size_image(
                 exported,
