@@ -92,7 +92,8 @@ def apply_material_plan(
                     int(raw.get("行距", 6)),
                 )
                 current_source = replacements.get(image, image)
-                corrected = staging_root / image.relative_to(source_root)
+                relative = image.relative_to(source_root)
+                corrected = staging_root / relative.parent / f"{relative.name}.png"
                 corrected.parent.mkdir(parents=True, exist_ok=True)
                 temporary = corrected.with_name(f".{corrected.stem}-material-temp{corrected.suffix}")
                 replace_material_text(

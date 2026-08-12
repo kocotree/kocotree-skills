@@ -98,19 +98,23 @@ class MaterialPlanTests(unittest.TestCase):
     """验证 Agent 视觉计划驱动局部面料修正。"""
 
     def test_material_plan_outputs_correction_without_changing_source(self) -> None:
-        """验证面料修正版进入临时目录且原图保持不变。"""
+        """验证 JPEG 面料修正版使用无损临时图且原图保持不变。"""
         with TemporaryDirectory() as temp_dir_value:
             root = Path(temp_dir_value)
-            detail = root / "数据包" / "详情" / "静态" / "601.png"
+            detail = root / "数据包" / "详情" / "静态" / "601.jpg"
             detail.parent.mkdir(parents=True)
-            Image.new("RGB", (900, 300), (245, 245, 245)).save(detail)
+            Image.effect_noise((900, 300), 80).convert("RGB").save(
+                detail,
+                "JPEG",
+                quality=90,
+            )
             plan = root / "plan.json"
             plan.write_text(
                 json.dumps(
                     {
                         "面料区域": [
                             {
-                                "图片": "数据包/详情/静态/601.png",
+                                "图片": "数据包/详情/静态/601.jpg",
                                 "识别原文": "棉90%氨纶10%",
                                 "区域": [100, 80, 800, 180],
                                 "字号": 36,
@@ -142,6 +146,9 @@ class MaterialPlanTests(unittest.TestCase):
             self.assertEqual(detail.read_bytes(), original_bytes)
             corrected = replacements[detail.resolve()]
             self.assertTrue(corrected.is_file())
+            self.assertEqual(corrected.name, "601.jpg.png")
+            with Image.open(corrected) as corrected_image:
+                self.assertEqual(corrected_image.format, "PNG")
             self.assertNotEqual(corrected.read_bytes(), original_bytes)
 
 
