@@ -61,7 +61,8 @@ Agent 在执行前逐张检查详情页，完成模块分类、连体图拆分�
 
 ## 规则索引
 
-- 平台输入、转换和目录规则：[platform_rules.md](references/platform_rules.md)
+- 输入目录树：[input_structure.md](references/input_structure.md)
+- 平台转换和目录规则：[platform_rules.md](references/platform_rules.md)
 - 合格证图、吊牌图和尺码图：[certificate_assets.md](references/certificate_assets.md)
 - 详情页面料检查与字体规则：[material_correction.md](references/material_correction.md)
 - NAS、Excel 与 BarTender 匹配：[nas_and_product_sources.md](references/nas_and_product_sources.md)

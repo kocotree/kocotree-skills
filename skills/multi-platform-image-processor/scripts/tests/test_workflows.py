@@ -169,19 +169,7 @@ class FullWorkflowTests(unittest.TestCase):
             source.mkdir(parents=True)
             output_root = root / "输出"
             report_path = root / "platform-report.json"
-            validation = {
-                "通过": True,
-                "问题": [],
-                "警告": [],
-                "识别目录": {},
-            }
             with patch(
-                "workflows.platform_processing.validate_source_pack",
-                return_value=validation,
-            ), patch(
-                "workflows.platform_processing.scan_source_pack",
-                return_value={},
-            ), patch(
                 "workflows.platform_processing.copy_template_empty_dirs",
             ), patch(
                 "workflows.platform_processing.build_tmall",

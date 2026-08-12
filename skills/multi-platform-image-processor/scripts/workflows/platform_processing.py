@@ -7,7 +7,6 @@ from pathlib import Path
 from common import (
     add_failure,
     add_platform_result,
-    add_warning,
     build_platform_directory_names,
     copy_template_empty_dirs,
     ensure_dir,
@@ -23,8 +22,6 @@ from common.run_logging import (
     prune_run_logs,
     report_artifact_prefix,
 )
-from common.scan_source_pack import scan_source_pack
-from common.source_pack_validator import validate_source_pack
 from common.write_report import write_report
 from platforms.cbme import derive as derive_cbme
 from platforms.fengxiang_aikucun import derive as derive_fengxiang_aikucun
@@ -135,23 +132,6 @@ def run_single(
     try:
         if not source.exists():
             add_failure(report, "源数据包目录不存在", 源目录=str(source))
-            write_report(report, report_path)
-            prune_report_files(report_path.parent)
-            return 2, output, report_path
-
-        validation = validate_source_pack(source)
-        report["输入包检测"] = validation
-        report["素材扫描"] = scan_source_pack(source)
-        for warning in validation["警告"]:
-            add_warning(report, warning["信息"], **{key: value for key, value in warning.items() if key != "信息"})
-        if not validation["通过"]:
-            for problem in validation["问题"]:
-                add_failure(
-                    report,
-                    "输入包检测失败",
-                    问题=problem["信息"],
-                    **{key: value for key, value in problem.items() if key != "信息"},
-                )
             write_report(report, report_path)
             prune_report_files(report_path.parent)
             return 2, output, report_path
