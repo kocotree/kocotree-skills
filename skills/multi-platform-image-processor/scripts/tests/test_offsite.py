@@ -21,7 +21,7 @@ class OffsiteTests(unittest.TestCase):
             material.parent.mkdir(parents=True)
             Image.new("RGB", (80, 60), (210, 220, 230)).save(material)
             output_root = temp_dir / "输出"
-            report = new_report(source_root, None, output_root, "offsite")
+            report = new_report(source_root, None, output_root)
 
             platform_dir = derive(source_root, None, output_root, report)
 

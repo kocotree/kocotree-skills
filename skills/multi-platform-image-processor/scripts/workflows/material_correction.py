@@ -11,7 +11,7 @@ from common.material_editor import (
     replace_material_text,
     verify_non_target_unchanged,
 )
-from common.workflow_report import add_report_item
+from common.utils import add_report_item
 
 from .business_support import (
     load_plan,
@@ -71,7 +71,7 @@ def apply_material_plan(
         try:
             image = resolve_relative_image(source_root, str(raw["图片"])).resolve()
             actual = str(raw["识别原文"])
-            region = parse_box(",".join(str(value) for value in raw["区域"]), "面料区域")
+            region = parse_box(raw["区域"], "面料区域")
             check = compare_material(expected, actual)
             result: dict[str, Any] = {
                 "图片": str(image),

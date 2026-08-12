@@ -110,25 +110,32 @@ def unique_path(path: Path) -> Path:
         idx += 1
 
 
-def new_report(source: Path, template: Path | None, output: Path, platform: str) -> dict[str, Any]:
-    """创建本次处理使用的初始报告。
+def new_report(source: Path, template: Path | None, output: Path) -> dict[str, Any]:
+    """创建完整产品处理流程的报告。
 
     参数：
         source：输入图片包路径。
         template：可选的平台目录模板路径。
         output：输出目录路径。
-        platform：目标平台参数。
     返回值：
         包含处理配置、统计、追溯信息和异常列表的报告数据。
     """
     return {
+        "工作流": {
+            "开始时间": datetime.now().isoformat(timespec="seconds"),
+            "结束时间": "",
+            "完成状态": "进行中",
+        },
         "处理配置": {
             "源目录": str(source),
             "模板目录": str(template) if template else "",
             "输出目录": str(output),
-            "平台参数": platform,
-            "开始时间": datetime.now().isoformat(timespec="seconds"),
         },
+        "产品匹配": {},
+        "路径": {"源路径": str(source), "最终输出": str(output)},
+        "面料检查": {"Excel中文原文": "", "检查项": []},
+        "BarTender导出": {},
+        "业务图片": {},
         "平台结果": {},
         "图片记录": [],
         "图片统计": {},
@@ -158,6 +165,14 @@ def add_failure(report: dict[str, Any], message: str, **extra: Any) -> None:
     item = {"信息": message}
     item.update(extra)
     report["失败项"].append(item)
+
+
+def add_report_item(report: dict[str, Any], level: str, message: str, **extra: Any) -> None:
+    """向报告追加结构化问题项。"""
+    item = {"信息": message, **extra}
+    report[level].append(item)
+    log = logger.error if level == "失败项" else logger.warning
+    log("工作流问题 level=%s message=%s extra=%r", level, message, extra)
 
 
 def add_review_suggestion(report: dict[str, Any], task: str, paths: list[Path], reason: str) -> None:
@@ -347,13 +362,24 @@ def finalize_report_summary(report: dict[str, Any], total_images: int | None = N
     返回值：
         无返回值。
     """
-    report["处理配置"]["结束时间"] = datetime.now().isoformat(timespec="seconds")
+    report["工作流"]["结束时间"] = datetime.now().isoformat(timespec="seconds")
+    if report["失败项"]:
+        report["工作流"]["完成状态"] = "失败"
+    elif report["Agent复核建议"]:
+        report["工作流"]["完成状态"] = "部分完成"
+    else:
+        report["工作流"]["完成状态"] = "完成"
     if total_images is None:
         total_images = int(report.get("图片统计", {}).get("总数", 0))
 
     report["汇总"] = {
         "平台数": len(report.get("平台结果", {})),
         "图片数": total_images,
+        "业务图片数": sum(
+            1 for item in report.get("业务图片", {}).values()
+            if isinstance(item, dict) and item.get("状态") == "成功"
+        ),
+        "面料检查数": len(report.get("面料检查", {}).get("检查项", [])),
         "Agent复核建议数": len(report.get("Agent复核建议", [])),
         "警告数": len(report.get("警告", [])),
         "风险数": len(report.get("风险", [])),

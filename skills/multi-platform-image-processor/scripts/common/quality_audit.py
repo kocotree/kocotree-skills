@@ -6,37 +6,30 @@ from .utils import list_images, image_info, add_failure, add_warning, 平台目�
 
 
 def run_quality_audit(
-    output_root: Path,
-    platforms: list[str],
     report: dict,
-    platform_directories: dict[str, Path] | None = None,
+    platform_directories: dict[str, Path],
 ) -> None:
     """按平台实际输出目录执行图片质检。
 
     参数：
-        output_root：六平台输出根目录。
-        platforms：需要执行质检的平台键列表。
         report：用于记录质检结果的报告。
-        platform_directories：可选的平台键与实际输出目录映射。
+        platform_directories：平台键与实际输出目录映射。
     返回值：
         无返回值。
     """
-    directories = platform_directories or {
-        key: output_root / directory_name for key, directory_name in 平台目录名.items()
-    }
-    for platform in platforms:
+    for platform in 平台目录名:
         if platform == "tmall":
-            _audit_tmall(directories[platform], report)
+            _audit_tmall(platform_directories[platform], report)
         elif platform == "cbme":
-            _audit_cbme(directories[platform], report)
+            _audit_cbme(platform_directories[platform], report)
         elif platform == "jd":
-            _audit_jd(directories[platform], report)
+            _audit_jd(platform_directories[platform], report)
         elif platform == "vip":
-            _audit_vip(directories[platform], report)
+            _audit_vip(platform_directories[platform], report)
         elif platform == "fengxiang-aikucun":
-            _audit_fengxiang(directories[platform], report)
+            _audit_fengxiang(platform_directories[platform], report)
         elif platform == "offsite":
-            _audit_offsite(directories[platform], report)
+            _audit_offsite(platform_directories[platform], report)
 
 
 def _check_file_size(path: Path, max_kb: int, report: dict) -> None:

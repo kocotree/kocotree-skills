@@ -14,10 +14,11 @@ from common.delivery_quality_audit import audit_business_images
 from common.material_editor import verify_non_target_unchanged
 from common.product_info_reader import ProductInfoRecord
 from common.product_matcher import MatchResult
-from common.workflow_report import new_workflow_report, write_workflow_report
+from common.utils import new_report
+from common.write_report import write_report
 from workflows.full_package import run_full_workflow
 from workflows.material_correction import apply_material_plan
-from workflows.platform_processing import run_single
+from workflows.platform_processing import run_platform_processing
 
 
 class UnifiedEntryTests(unittest.TestCase):
@@ -50,9 +51,10 @@ class WorkflowReportTests(unittest.TestCase):
         """验证完成状态由失败项和复核项决定。"""
         with TemporaryDirectory() as temp_dir_value:
             root = Path(temp_dir_value)
-            report = new_workflow_report("certificate", root, root)
+            report = new_report(root, None, root)
             report["Agent复核建议"].append({"任务名称": "视觉复核"})
-            path = write_workflow_report(report, root / "report.json")
+            path = root / "report.json"
+            write_report(report, path)
             data = json.loads(path.read_text(encoding="utf-8"))
 
             self.assertEqual(data["工作流"]["完成状态"], "部分完成")
@@ -70,9 +72,9 @@ class WorkflowReportTests(unittest.TestCase):
             for path, size in assets.items():
                 path.parent.mkdir(parents=True, exist_ok=True)
                 Image.new("RGB", size, "white").save(path, "JPEG")
-            report = new_workflow_report("certificate", root, root)
+            report = new_report(root, None, root)
 
-            self.assertTrue(audit_business_images(root, report, require_all=True))
+            self.assertTrue(audit_business_images(root, report))
             self.assertFalse(report["失败项"])
 
     def test_delivery_audit_rejects_business_image_over_500kb(self) -> None:
@@ -89,9 +91,9 @@ class WorkflowReportTests(unittest.TestCase):
                 Image.new("RGB", size, "white").save(path, "JPEG")
             oversized = root / "合格证" / "合格证图.jpg"
             oversized.write_bytes(oversized.read_bytes() + b"0" * (501 * 1024))
-            report = new_workflow_report("certificate", root, root)
+            report = new_report(root, None, root)
 
-            self.assertFalse(audit_business_images(root, report, require_all=True))
+            self.assertFalse(audit_business_images(root, report))
             self.assertTrue(any("超过500KB" in item["信息"] for item in report["失败项"]))
 
 
@@ -129,7 +131,7 @@ class MaterialPlanTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            report = new_workflow_report("material", root, root)
+            report = new_report(root, None, root)
             original_bytes = detail.read_bytes()
             staging = root / "临时修正版"
 
@@ -168,7 +170,6 @@ class FullWorkflowTests(unittest.TestCase):
             source = root / "kocotree-pack-random" / "数据包"
             source.mkdir(parents=True)
             output_root = root / "输出"
-            report_path = root / "platform-report.json"
             with patch(
                 "workflows.platform_processing.copy_template_empty_dirs",
             ), patch(
@@ -187,11 +188,12 @@ class FullWorkflowTests(unittest.TestCase):
             ), patch(
                 "workflows.platform_processing.run_quality_audit",
             ):
-                code, output, _ = run_single(
+                report = new_report(source, root / "模板", output_root)
+                code, output = run_platform_processing(
                     source,
                     root / "模板",
                     output_root,
-                    report_path,
+                    report,
                     product_code="KQ26143",
                     product_name="儿童长裤",
                 )
@@ -199,7 +201,6 @@ class FullWorkflowTests(unittest.TestCase):
             self.assertEqual(code, 0)
             expected_jd = output / "KQ26143 儿童长裤-京东"
             self.assertEqual(derive_jd.call_args.args[2], expected_jd)
-            report = json.loads(report_path.read_text(encoding="utf-8"))
             self.assertEqual(report["处理配置"]["产品名"], "儿童长裤")
 
     def test_full_workflow_orchestrates_all_layers(self) -> None:
@@ -210,21 +211,6 @@ class FullWorkflowTests(unittest.TestCase):
             source.mkdir(parents=True)
             output = root / "输出"
             report_path = root / "full-report.json"
-            platform_report = root / "platform-report.json"
-            platform_report.write_text(
-                json.dumps(
-                    {
-                        "处理配置": {"输出目录": str(output / "产品")},
-                        "汇总": {},
-                        "警告": [],
-                        "风险": [],
-                        "失败项": [],
-                        "Agent复核建议": [],
-                    },
-                    ensure_ascii=False,
-                ),
-                encoding="utf-8",
-            )
             record = ProductInfoRecord(
                 root / "KQ26143.xlsx",
                 "产品资料",
@@ -256,8 +242,8 @@ class FullWorkflowTests(unittest.TestCase):
                 "workflows.full_package.apply_material_plan",
                 return_value={},
             ) as material, patch(
-                "workflows.full_package.run_single",
-                return_value=(0, output / "产品", platform_report),
+                "workflows.full_package.run_platform_processing",
+                return_value=(0, output / "产品"),
             ) as platform, patch(
                 "workflows.full_package.generate_business_images",
                 return_value=True,
@@ -281,7 +267,6 @@ class FullWorkflowTests(unittest.TestCase):
             self.assertFalse(material.call_args.args[3].exists())
             data = json.loads(report_path.read_text(encoding="utf-8"))
             self.assertEqual(data["工作流"]["完成状态"], "完成")
-            self.assertEqual(data["平台子报告"]["报告路径"], str(platform_report))
 
 
 if __name__ == "__main__":

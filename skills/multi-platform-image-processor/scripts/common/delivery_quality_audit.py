@@ -6,7 +6,7 @@ from typing import Any
 
 from PIL import Image
 
-from .workflow_report import add_report_item
+from .utils import add_report_item
 
 
 logger = logging.getLogger(__name__)
@@ -32,23 +32,18 @@ def _corners_are_white(image: Image.Image, threshold: int = 242) -> bool:
 def audit_business_images(
     product_root: Path,
     report: dict[str, Any],
-    require_all: bool,
 ) -> bool:
     """检查业务图片存在性、尺寸、格式和白底。
 
     参数：
         product_root：业务图片所在产品目录。
         report：需要记录质检结果的顶层报告。
-        require_all：是否要求三张图片；False 时只要求尺码图。
     返回值：
         全部必需自动检查通过时返回 True。
     """
-    required = set(EXPECTED_ASSETS) if require_all else {"尺码图"}
     passed = True
     for name, (relative, expected_size) in EXPECTED_ASSETS.items():
         path = product_root / Path(relative)
-        if name not in required and not path.exists():
-            continue
         item_passed = True
         if not path.is_file():
             add_report_item(report, "失败项", f"缺少{name}", 文件=str(path))

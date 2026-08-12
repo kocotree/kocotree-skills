@@ -11,7 +11,7 @@ from common.delivery_quality_audit import audit_business_images
 from common.font_assets import load_font_assets
 from common.product_matcher import extract_size, select_bartender_file
 from common.size_table_extractor import CropBox, compose_size_image, extract_size_table
-from common.workflow_report import add_report_item
+from common.utils import add_report_item
 
 from .business_support import parse_box, parse_point
 
@@ -25,7 +25,7 @@ def _resolve_size_source(content_root: Path, value: str) -> Path:
 
 
 def generate_business_images(
-    args: Any,
+    context: dict[str, Any],
     product_name: str,
     representative_color: str,
     fabric_text: str,
@@ -37,7 +37,7 @@ def generate_business_images(
     """生成合格证图、吊牌图和尺码图。
 
     参数：
-        args：包含 Agent 内部视觉定位结果的入口参数。
+        context：Agent 内部视觉定位结果。
         product_name：产品信息 Excel 中的正式产品名称。
         representative_color：产品信息 Excel 首个颜色或规格对应的代表颜色。
         fabric_text：产品信息 Excel 中的中文面料原文。
@@ -62,8 +62,8 @@ def generate_business_images(
     report["BarTender导出"]["选中文件"] = str(selected)
     report["BarTender导出"]["代表颜色"] = representative_color
     report["BarTender导出"]["代表尺码"] = extract_size(selected.stem)
-    size_source_value = getattr(args, "size_table_source", "")
-    size_box_value = getattr(args, "size_table_box", "")
+    size_source_value = str(context.get("尺码表图片", "")).strip()
+    size_box_value = context.get("尺码表区域")
     if not size_source_value or not size_box_value:
         add_report_item(report, "失败项", "缺少实际尺码表来源或完整裁切坐标")
         report["Agent复核建议"].append(
@@ -74,8 +74,8 @@ def generate_business_images(
             }
         )
         return False
-    fabric_anchor_value = getattr(args, "certificate_fabric_anchor", "")
-    fabric_font_size = getattr(args, "certificate_fabric_font_size", 0)
+    fabric_anchor_value = context.get("合格证面料锚点")
+    fabric_font_size = int(context.get("合格证面料字号", 0))
     if not fabric_anchor_value or fabric_font_size <= 0:
         add_report_item(report, "失败项", "缺少合格证等级字段下方面料锚点或字号")
         report["Agent复核建议"].append(
@@ -128,16 +128,15 @@ def generate_business_images(
         except Exception as exc:
             add_report_item(report, "失败项", "业务图片合成失败", 错误=str(exc))
             return False
-    passed = audit_business_images(product_root, report, require_all=True)
-    if not getattr(args, "visual_review_approved", False):
-        report["Agent复核建议"].append(
-            {
-                "任务名称": "复核业务图片排版与清晰度",
-                "图片路径": [
-                    item["路径"] for item in report["业务图片"].values()
-                    if isinstance(item, dict) and item.get("路径")
-                ],
-                "原因": "确认尺码表完整清晰、三张业务图片排版正常且非目标内容未受影响",
-            }
-        )
+    passed = audit_business_images(product_root, report)
+    report["Agent复核建议"].append(
+        {
+            "任务名称": "复核业务图片排版与清晰度",
+            "图片路径": [
+                item["路径"] for item in report["业务图片"].values()
+                if isinstance(item, dict) and item.get("路径")
+            ],
+            "原因": "确认尺码表完整清晰、三张业务图片排版正常且非目标内容未受影响",
+        }
+    )
     return passed

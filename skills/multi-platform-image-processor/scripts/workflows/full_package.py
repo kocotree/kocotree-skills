@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -15,17 +14,24 @@ from common.product_info_reader import (
 )
 from common.product_matcher import infer_product_code
 from common.settings import resolve_business_paths
-from common.workflow_report import (
-    add_report_item,
-    merge_platform_report,
-    new_workflow_report,
-    write_workflow_report,
+from common.run_logging import (
+    close_run_file_logging,
+    configure_run_file_logging,
+    default_run_log_path,
+    prune_run_logs,
+    report_artifact_prefix,
 )
+from common.utils import add_report_item, new_report
+from common.write_report import prune_report_files, write_report
 
-from .business_support import default_business_report_path, product_match_to_dict
+from .business_support import default_business_report_path, load_plan, product_match_to_dict
 from .certificate_assets import generate_business_images
 from .material_correction import apply_material_plan
-from .platform_processing import default_output_path, default_template_path, run_single
+from .platform_processing import (
+    default_output_path,
+    default_template_path,
+    run_platform_processing,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +48,17 @@ def run_full_workflow(args: Any) -> int:
     product_code = args.product_code.strip() or infer_product_code(source)
     product_name = args.product_name.strip()
     output_root = Path(args.output).expanduser().resolve() if args.output else default_output_path()
-    report = new_workflow_report("完整流程", source, output_root)
     report_path = default_business_report_path(product_code)
+    template = default_template_path()
+    report = new_report(source, template, output_root)
+    run_id = report_artifact_prefix(report_path)
+    display_product = product_name or product_code or source.parent.name or source.name
+    log_path = configure_run_file_logging(default_run_log_path(report_path), run_id, display_product)
+    report["处理配置"]["运行ID"] = run_id
+    report["处理配置"]["产品名"] = display_product
+    report["追溯文件"]["运行日志"] = str(log_path)
+    context_value = getattr(args, "context", "")
+    context = load_plan(Path(context_value).expanduser().resolve()) if context_value else {}
     try:
         if not product_code:
             raise RuntimeError("无法从产品目录可靠识别货号，请提供 --product-code")
@@ -79,7 +94,7 @@ def run_full_workflow(args: Any) -> int:
         report["面料检查"]["Excel中文原文"] = expected
         report["产品匹配"]["代表颜色"] = representative_color
         report["路径"]["源UNC路径"] = str(to_unc_path(source))
-        plan_value = getattr(args, "material_plan", "")
+        plan_value = str(context.get("面料计划", "")).strip()
         plan_path = Path(plan_value).expanduser().resolve() if plan_value else None
         with TemporaryDirectory(prefix="kocotree-material-") as staging_value:
             detail_overrides = apply_material_plan(
@@ -92,28 +107,24 @@ def run_full_workflow(args: Any) -> int:
             if detail_overrides is None:
                 raise RuntimeError("详情页面料检查未完成，平台派生已停止")
 
-            platform_report_path = report_path.with_name(f"{report_path.stem}-platform-report.json")
-            template = default_template_path()
-            detail_plan_value = getattr(args, "detail_plan", "")
+            detail_plan_value = str(context.get("详情计划", "")).strip()
             detail_plan = Path(detail_plan_value).expanduser().resolve() if detail_plan_value else None
-            platform_code, product_output, actual_platform_report = run_single(
+            platform_code, product_output = run_platform_processing(
                 source,
                 template,
                 output_root,
-                platform_report_path,
+                report,
                 product_code=confirmed_product_code,
                 product_name=confirmed_product_name,
                 detail_plan=detail_plan,
                 detail_overrides=detail_overrides,
             )
-        platform_report = json.loads(actual_platform_report.read_text(encoding="utf-8"))
-        merge_platform_report(report, platform_report, actual_platform_report)
         report["路径"]["最终输出"] = str(product_output)
         if platform_code != 0:
-            add_report_item(report, "失败项", "平台处理引擎存在失败项", 退出码=platform_code)
+            logger.warning("平台处理存在失败项 code=%d", platform_code)
 
         generate_business_images(
-            args=args,
+            context=context,
             product_name=confirmed_product_name,
             representative_color=representative_color,
             fabric_text=expected,
@@ -124,5 +135,9 @@ def run_full_workflow(args: Any) -> int:
         )
     except Exception as exc:
         add_report_item(report, "失败项", "完整流程执行失败", 错误=str(exc))
-    write_workflow_report(report, report_path)
+    finally:
+        write_report(report, report_path)
+        prune_report_files(report_path.parent)
+        prune_run_logs(log_path.parent)
+        close_run_file_logging()
     return 0 if not report["失败项"] else 1

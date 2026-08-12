@@ -15,12 +15,14 @@ def default_business_report_path(product_code: str) -> Path:
     return Path(__file__).resolve().parents[1] / "output" / "report" / f"{safe_code}-{timestamp}-report.json"
 
 
-def parse_box(value: str, label: str) -> tuple[int, int, int, int]:
-    """解析逗号分隔的四整数矩形。"""
+def parse_box(value: object, label: str) -> tuple[int, int, int, int]:
+    """解析内部上下文中的四整数矩形。"""
+    if not isinstance(value, (list, tuple)):
+        raise RuntimeError(f"{label}必须是四个整数")
     try:
-        numbers = tuple(int(part.strip()) for part in value.split(","))
-    except ValueError as exc:
-        raise RuntimeError(f"{label}必须是四个逗号分隔整数") from exc
+        numbers = tuple(int(part) for part in value)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"{label}必须是四个整数") from exc
     if len(numbers) != 4:
         raise RuntimeError(f"{label}必须是 left,top,right,bottom")
     left, top, right, bottom = numbers
@@ -29,19 +31,21 @@ def parse_box(value: str, label: str) -> tuple[int, int, int, int]:
     return numbers
 
 
-def parse_point(value: str, label: str) -> tuple[int, int]:
-    """解析逗号分隔的非负二维坐标。
+def parse_point(value: object, label: str) -> tuple[int, int]:
+    """解析内部上下文中的非负二维坐标。
 
     参数：
-        value：格式为 `x,y` 的坐标文本。
+        value：由两个整数组成的列表或元组。
         label：错误信息中使用的业务名称。
     返回值：
         横坐标和纵坐标组成的二元组。
     """
+    if not isinstance(value, (list, tuple)):
+        raise RuntimeError(f"{label}必须是两个整数")
     try:
-        numbers = tuple(int(part.strip()) for part in value.split(","))
-    except ValueError as exc:
-        raise RuntimeError(f"{label}必须是两个逗号分隔整数") from exc
+        numbers = tuple(int(part) for part in value)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"{label}必须是两个整数") from exc
     if len(numbers) != 2:
         raise RuntimeError(f"{label}必须是 x,y")
     if any(number < 0 for number in numbers):
