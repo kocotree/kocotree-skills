@@ -19,10 +19,10 @@ def build(
     detail_plan: Path | None = None,
     detail_overrides: dict[Path, Path] | None = None,
 ) -> Path:
-    """生成天猫通用版并建立六平台详情页母版。
+    """生成天猫通用版和六平台共用的详情页。
 
     参数：
-        source_root：已验证的产品数据包根目录。
+        source_root：产品数据包根目录。
         output_root：六平台输出根目录。
         report：用于记录图片处理与异常的报告。
         detail_plan：Agent 视觉检查生成的详情模块计划路径。

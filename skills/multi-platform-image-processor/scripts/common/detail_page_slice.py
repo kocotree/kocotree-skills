@@ -264,8 +264,8 @@ def generate_sequential_detail_pages(
     return outputs
 
 
-def scale_detail_pages_from_master(
-    master_dir: Path,
+def scale_detail_pages(
+    source_dir: Path,
     output_dir: Path,
     width: int,
     max_height: int,
@@ -274,7 +274,7 @@ def scale_detail_pages_from_master(
     platform: str,
     usage: str,
 ) -> list[Path]:
-    return generate_sequential_detail_pages(list_images(master_dir), output_dir, width, max_height, max_bytes, report, platform, usage)
+    return generate_sequential_detail_pages(list_images(source_dir), output_dir, width, max_height, max_bytes, report, platform, usage)
 
 
 def merge_long_detail_slices(

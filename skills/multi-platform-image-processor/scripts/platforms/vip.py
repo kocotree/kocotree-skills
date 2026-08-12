@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from common import ensure_dir, add_risk
-from common.detail_page_slice import scale_detail_pages_from_master
+from common.detail_page_slice import scale_detail_pages
 from common.image_resize_compress import process_jpg_canvas
 from common.scan_source_pack import get_image_group
 from common.transparent_image_fit import process_vip_transparent_image
@@ -25,5 +25,5 @@ def derive(source_root: Path, tmall_dir: Path, output_root: Path, report: dict) 
     transparent_dir = ensure_dir(platform_dir / "1200透明图")
     for source in get_image_group(source_root, "透明图"):
         process_vip_transparent_image(source, transparent_dir / f"{source.stem}.png", 1200, 500 * 1024, report, 平台, "1200透明图")
-    scale_detail_pages_from_master(tmall_dir / "790详情页", platform_dir / "750详情页", 750, 1600, 500 * 1024, report, 平台, "750详情页")
+    scale_detail_pages(tmall_dir / "790详情页", platform_dir / "750详情页", 750, 1600, 500 * 1024, report, 平台, "750详情页")
     return platform_dir

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -16,13 +15,6 @@ from common.settings import resolve_business_paths
 from common.text_removal import initialize_text2image
 
 logger = logging.getLogger(__name__)
-
-MACOS_PNGQUANT_DEPENDENCIES = {
-    "liblcms2": "little-cms2",
-    "little-cms2": "little-cms2",
-    "libpng": "libpng",
-}
-
 
 def validate_current_venv() -> None:
     """确认初始化脚本运行在当前 skill 的虚拟环境中。"""
@@ -44,82 +36,21 @@ def run_pngquant_version(executable: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def find_missing_macos_dependencies(detail: str) -> list[str]:
-    """从 pngquant 错误信息中识别缺少的 macOS 运行库。"""
-    if sys.platform != "darwin":
-        return []
-    lowered = detail.lower()
-    return sorted(
-        {
-            formula
-            for marker, formula in MACOS_PNGQUANT_DEPENDENCIES.items()
-            if marker in lowered
-        },
-    )
-
-
-def install_homebrew_dependencies(formulas: list[str]) -> None:
-    """使用 Homebrew 安装 macOS 运行库。
-
-    功能说明：调用当前系统中的 Homebrew 安装 pngquant 明确缺少的运行库。
-    参数：
-        formulas：需要安装的 Homebrew formula 名称列表。
-    返回值：
-        无。
-    """
-    brew = shutil.which("brew")
-    if not brew:
-        raise RuntimeError(
-            "pngquant 缺少 macOS 运行库，且未找到 Homebrew；"
-            "请先安装 Homebrew，再重新执行 uv run init.py",
-        )
-    logger.warning("pngquant缺少macOS运行库，开始安装：%s", ", ".join(formulas))
-    result = subprocess.run(
-        [brew, "install", *formulas],
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=600,
-    )
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout).strip()
-        raise RuntimeError(
-            f"Homebrew安装pngquant运行库失败："
-            f"{detail[:500] or f'退出码 {result.returncode}'}",
-        )
-    logger.info("pngquant的macOS运行库安装完成：%s", ", ".join(formulas))
-
-
 def validate_pngquant() -> Path:
-    """查找、补齐运行库并实际执行 pngquant。
+    """查找并实际执行 pngquant。
 
-    功能说明：定位 pngquant，通过版本命令验证执行环境，并在 macOS
-    明确缺少 Homebrew 运行库时自动安装后重新验证。
+    功能说明：定位 pngquant，通过版本命令验证它可正常执行。
     返回值：
         验证通过的 pngquant 可执行文件路径。
     """
     executable = find_pngquant()
     if not executable:
         raise RuntimeError("未找到 pngquant 可执行文件")
-    installed: set[str] = set()
-    while True:
-        result = run_pngquant_version(executable)
-        if result.returncode == 0:
-            return Path(executable)
+    result = run_pngquant_version(executable)
+    if result.returncode != 0:
         detail = (result.stderr or result.stdout).strip()
-        missing = [
-            formula
-            for formula in find_missing_macos_dependencies(detail)
-            if formula not in installed
-        ]
-        if not missing:
-            raise RuntimeError(
-                detail[:500] or f"pngquant 退出码 {result.returncode}",
-            )
-        install_homebrew_dependencies(missing)
-        installed.update(missing)
+        raise RuntimeError(detail[:500] or f"pngquant 退出码 {result.returncode}")
+    return Path(executable)
 
 
 def validate_business_environment() -> dict[str, str]:

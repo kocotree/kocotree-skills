@@ -182,8 +182,8 @@ def add_review_suggestion(report: dict[str, Any], task: str, paths: list[Path], 
         try:
             short_paths.append(str(p.relative_to(output_dir)))
         except ValueError:
-            short_paths.append(p.name)
-    report["Agent复核建议"].append(
+            short_paths.append(str(p))
+    report.setdefault("Agent复核建议", []).append(
         {
             "任务名称": task,
             "图片路径": short_paths,

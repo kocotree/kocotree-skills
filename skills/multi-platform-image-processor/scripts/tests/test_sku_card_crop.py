@@ -240,7 +240,7 @@ class SkuCardCropTests(unittest.TestCase):
             self.assertEqual(report["风险"][0]["尝试次数"], 2)
             self.assertEqual(len(report["风险"][0]["原因"]), 2)
 
-    def test_process_rejects_bad_model_result_and_outputs_original(self) -> None:
+    def test_process_keeps_over_limit_candidates_for_agent_review(self) -> None:
         with TemporaryDirectory() as temp_dir_value:
             temp_dir = Path(temp_dir_value)
             source = temp_dir / "source.jpg"
@@ -268,8 +268,13 @@ class SkuCardCropTests(unittest.TestCase):
             self.assertIsNotNone(saved)
             self.assertEqual(run_mock.call_count, 2)
             self.assertEqual(len(report["风险"]), 1)
-            self.assertEqual(report["风险"][0]["尝试次数"], 2)
-            self.assertEqual(len(report["风险"][0]["原因"]), 2)
+            self.assertEqual(len(report["风险"][0]["候选"]), 2)
+            self.assertEqual(len(report["Agent复核建议"]), 1)
+            for candidate in report["风险"][0]["候选"]:
+                candidate_path = Path(candidate["候选图"])
+                self.assertTrue(candidate_path.exists())
+                self.assertLessEqual(candidate_path.stat().st_size, 500 * 1024)
+                self.assertEqual(Image.open(candidate_path).size, (800, 800))
             saved_image = Image.open(saved).convert("RGB")
             red, green, blue = saved_image.getpixel((600, 60))
             self.assertLess(abs(red - green), 10)

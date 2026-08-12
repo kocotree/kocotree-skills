@@ -3,7 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from common import ensure_dir, copy_file_original, add_review_suggestion
+from common import add_review_suggestion, ensure_dir
 from common.image_resize_compress import process_jpg_original_or_compress, process_png_original_or_compress
 from common.logo_overlay import find_logo, overlay_logo
 from common.scan_source_pack import get_image_group, get_sku800_recursive, resolve_source_path
