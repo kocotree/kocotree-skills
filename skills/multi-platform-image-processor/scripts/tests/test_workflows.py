@@ -146,7 +146,7 @@ class MaterialPlanTests(unittest.TestCase):
                 )
 
             self.assertIsNotNone(replacements)
-            self.assertEqual(verifier.call_args.kwargs["difference_threshold"], 15)
+            self.assertEqual(verifier.call_args.kwargs["difference_threshold"], 12)
             self.assertFalse(report["失败项"])
             self.assertTrue(report["面料检查"]["检查项"][0]["已修改"])
             self.assertEqual(detail.read_bytes(), original_bytes)

@@ -140,6 +140,7 @@ class SkuCardCropTests(unittest.TestCase):
         audit = validate_protected_regions(model_input, generated, plan)
 
         self.assertFalse(audit["通过"])
+        self.assertEqual(audit["标签内部非文字变化比例阈值"], 0.15)
         self.assertGreater(
             audit["标签内部非文字变化比例"],
             audit["标签内部非文字变化比例阈值"],

@@ -12,7 +12,7 @@ from PIL import Image
 彩色色差阈值 = 35
 受保护区平均差异阈值 = 10.0
 受保护区明显变化比例阈值 = 0.15
-标签内部非文字变化比例阈值 = 0.12
+标签内部非文字变化比例阈值 = 0.15
 
 
 class CardCropError(RuntimeError):

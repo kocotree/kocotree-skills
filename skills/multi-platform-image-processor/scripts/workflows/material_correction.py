@@ -110,7 +110,7 @@ def apply_material_plan(
                     current_source,
                     temporary,
                     [region],
-                    difference_threshold=15,
+                    difference_threshold=12,
                     maximum_changed_ratio=0.002,
                 ):
                     temporary.unlink(missing_ok=True)
