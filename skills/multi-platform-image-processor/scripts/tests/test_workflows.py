@@ -77,9 +77,9 @@ class WorkflowReportTests(unittest.TestCase):
         with TemporaryDirectory() as temp_dir_value:
             root = Path(temp_dir_value)
             assets = {
-                root / "合格证" / "合格证图.jpg": (750, 1600),
-                root / "吊牌图" / "吊牌图.jpg": (800, 800),
-                root / "尺码图" / "尺码图.jpg": (800, 800),
+                root / "唯品会" / "合格证.jpg": (750, 1600),
+                root / "天猫通用版" / "吊牌图.jpg": (800, 800),
+                root / "蜂享家＋爱库存" / "尺码图" / "尺码图.jpg": (800, 800),
             }
             for path, size in assets.items():
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -94,14 +94,14 @@ class WorkflowReportTests(unittest.TestCase):
         with TemporaryDirectory() as temp_dir_value:
             root = Path(temp_dir_value)
             assets = {
-                root / "合格证" / "合格证图.jpg": (750, 1600),
-                root / "吊牌图" / "吊牌图.jpg": (800, 800),
-                root / "尺码图" / "尺码图.jpg": (800, 800),
+                root / "唯品会" / "合格证.jpg": (750, 1600),
+                root / "天猫通用版" / "吊牌图.jpg": (800, 800),
+                root / "蜂享家＋爱库存" / "尺码图" / "尺码图.jpg": (800, 800),
             }
             for path, size in assets.items():
                 path.parent.mkdir(parents=True, exist_ok=True)
                 Image.new("RGB", size, "white").save(path, "JPEG")
-            oversized = root / "合格证" / "合格证图.jpg"
+            oversized = root / "唯品会" / "合格证.jpg"
             oversized.write_bytes(oversized.read_bytes() + b"0" * (501 * 1024))
             report = new_report(root, None, root)
 
@@ -199,6 +199,9 @@ class FullWorkflowTests(unittest.TestCase):
                 "workflows.platform_processing.derive_offsite",
             ), patch(
                 "workflows.platform_processing.run_quality_audit",
+            ), patch(
+                "workflows.platform_processing.resolve_color_names",
+                return_value={},
             ):
                 report = new_report(source, root / "模板", output_root)
                 code, output = run_platform_processing(

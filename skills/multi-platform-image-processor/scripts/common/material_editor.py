@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,48 +10,6 @@ from .font_assets import FontAsset, require_glyphs
 from .utils import ensure_dir
 
 logger = logging.getLogger(__name__)
-
-
-IGNORED_LABELS = ("中文面料信息", "面料成分", "面料", "材质", "成分")
-
-
-@dataclass(frozen=True)
-class MaterialCheck:
-    """保存一处详情页面料的核对结果。"""
-
-    expected: str
-    actual: str
-    normalized_expected: str
-    normalized_actual: str
-    matches: bool
-
-
-def normalize_material_text(value: str) -> str:
-    """归一化面料提示词、空白和非实质分隔符。"""
-    text = str(value).casefold()
-    for label in IGNORED_LABELS:
-        text = text.replace(label.casefold(), "")
-    return re.sub(r"[\s+＋、，,；;：:/／]+", "", text)
-
-
-def compare_material(expected: str, actual: str) -> MaterialCheck:
-    """比较 Excel 中文面料与详情页识别文本。
-
-    参数：
-        expected：Excel 中文面料原文。
-        actual：详情页识别文本。
-    返回值：
-        包含原文、归一化值和一致性结论的结果。
-    """
-    normalized_expected = normalize_material_text(expected)
-    normalized_actual = normalize_material_text(actual)
-    return MaterialCheck(
-        expected,
-        actual,
-        normalized_expected,
-        normalized_actual,
-        bool(normalized_expected) and normalized_expected == normalized_actual,
-    )
 
 
 @dataclass(frozen=True)
@@ -206,17 +163,21 @@ def replace_material_text(
     else:
         ImageDraw.Draw(image).rectangle(region, fill=background)
     text_left = left + padding[0]
+    text_right = right - padding[0]
     text_top = top + padding[1]
-    maximum_width = right - text_left
+    maximum_width = text_right - text_left
     lines = wrap_mixed_text(text, fonts, style.font_size, maximum_width)
     loaded = _load_render_fonts(text, fonts, style.font_size)
     line_height = max(sum(font.getmetrics()) for font in loaded.values()) + style.line_spacing
     for line_index, line in enumerate(lines):
         if not line:
             continue
+        line_left = round(text_right - _mixed_text_width(line, loaded))
+        if line_left < text_left:
+            raise RuntimeError("面料文字超出指定区域")
         drawn = draw_mixed_text(
             image,
-            (text_left, text_top + line_index * line_height),
+            (line_left, text_top + line_index * line_height),
             line,
             fonts,
             style,

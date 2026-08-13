@@ -24,20 +24,20 @@ class DetailPageSliceTests(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "数据包"
             static = root / "详情" / "静态"
-            for name in ("01.jpg", "02.jpg", "04.jpg", "05.jpg"):
+            for name in ("01.jpg", "04.jpg", "05.jpg", "06.jpg"):
                 create_rgb(static / name, (790, 120))
-            create_rgb(static / "03.jpg", (790, 200))
+            create_rgb(static / "02.jpg", (790, 200))
             plan_path = Path(temp_dir) / "detail-plan.json"
             plan_path.write_text(
                 json.dumps(
                     {
                         "详情模块": [
                             {"类型": "尺码表", "图片": "详情/静态/05.jpg"},
-                            {"类型": "图标说明", "图片": "详情/静态/03.jpg", "区域": [0, 100, 790, 200]},
+                            {"类型": "图标说明", "图片": "详情/静态/02.jpg", "区域": [0, 100, 790, 200]},
                             {"类型": "品牌背书", "图片": "详情/静态/01.jpg"},
                             {"类型": "产品信息", "图片": "详情/静态/04.jpg"},
-                            {"类型": "KV", "图片": "详情/静态/02.jpg"},
-                            {"类型": "适用图标", "图片": "详情/静态/03.jpg", "区域": [0, 0, 790, 100]},
+                            {"类型": "尺码快选", "图片": "详情/静态/06.jpg"},
+                            {"类型": "KV", "图片": "详情/静态/02.jpg", "区域": [0, 0, 790, 100]},
                         ]
                     },
                     ensure_ascii=False,
@@ -58,11 +58,11 @@ class DetailPageSliceTests(unittest.TestCase):
 
             self.assertEqual(
                 [item["类型"] for item in report["详情页模块"]["模块顺序"]],
-                ["品牌背书", "KV", "适用图标", "产品信息", "尺码表", "图标说明"],
+                ["品牌背书", "KV", "图标说明", "产品信息", "尺码表", "尺码快选"],
             )
-            with Image.open(outputs[2]) as icon, Image.open(outputs[5]) as explanation:
+            with Image.open(outputs[1]) as kv, Image.open(outputs[2]) as icon:
+                self.assertEqual(kv.size, (790, 100))
                 self.assertEqual(icon.size, (790, 100))
-                self.assertEqual(explanation.size, (790, 100))
             self.assertEqual(outputs[3], corrected)
             self.assertTrue(report["详情页模块"]["模块顺序"][3]["面料已修正"])
 

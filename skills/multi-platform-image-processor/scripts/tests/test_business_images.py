@@ -13,7 +13,7 @@ from common.certificate_composer import compose_certificate, compose_hangtag
 from common.font_assets import load_font_assets
 from common.material_editor import (
     TextStyle,
-    compare_material,
+    draw_mixed_text,
     replace_material_text,
     split_font_runs,
     verify_non_target_unchanged,
@@ -156,14 +156,6 @@ class BusinessImageComposerTests(unittest.TestCase):
 class MaterialProcessingTests(unittest.TestCase):
     """验证面料内容比较、混合字体和非目标区域保护。"""
 
-    def test_material_comparison_ignores_only_format_separators(self) -> None:
-        """验证提示词和分隔符可忽略，成分比例差异不可忽略。"""
-        matched = compare_material("棉95% 氨纶5%", "面料：棉 95%＋氨纶 5%")
-        mismatched = compare_material("棉95% 氨纶5%", "材质：棉90%/氨纶10%")
-
-        self.assertTrue(matched.matches)
-        self.assertFalse(mismatched.matches)
-
     def test_font_runs_assign_digit_one_separately(self) -> None:
         """验证中文、普通数字和数字 1 使用对应字体角色。"""
         runs = split_font_runs("棉11.5%")
@@ -203,6 +195,33 @@ class MaterialProcessingTests(unittest.TestCase):
             self.assertTrue(verify_non_target_unchanged(source, output, [region]))
             with Image.open(output) as image:
                 self.assertNotEqual(image.crop(region).getbbox(), None)
+
+    def test_repaint_right_aligns_each_excel_line(self) -> None:
+        """验证 Excel 面料原文的每一行使用同一右边界。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            source = root / "before.png"
+            output = root / "after.png"
+            Image.new("RGB", (900, 300), (245, 245, 245)).save(source)
+
+            with patch(
+                "common.material_editor.draw_mixed_text",
+                wraps=draw_mixed_text,
+            ) as draw:
+                replace_material_text(
+                    source,
+                    output,
+                    (100, 60, 800, 220),
+                    "面料：面层：80%聚酯纤维\n底层：100%聚酯纤维",
+                    load_font_assets(),
+                    TextStyle(30, (20, 20, 20)),
+                    (245, 245, 245),
+                    (10, 10),
+                )
+
+            first_x = draw.call_args_list[0].args[1][0]
+            second_x = draw.call_args_list[1].args[1][0]
+            self.assertGreater(second_x, first_x)
 
 
 if __name__ == "__main__":

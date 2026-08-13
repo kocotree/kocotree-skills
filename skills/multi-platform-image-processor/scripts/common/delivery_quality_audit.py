@@ -11,9 +11,9 @@ from .utils import add_report_item
 
 logger = logging.getLogger(__name__)
 EXPECTED_ASSETS = {
-    "合格证图": ("合格证/合格证图.jpg", (750, 1600)),
-    "吊牌图": ("吊牌图/吊牌图.jpg", (800, 800)),
-    "尺码图": ("尺码图/尺码图.jpg", (800, 800)),
+    "合格证图": ("唯品会/合格证.jpg", (750, 1600)),
+    "吊牌图": ("天猫通用版/吊牌图.jpg", (800, 800)),
+    "尺码图": ("蜂享家＋爱库存/尺码图/尺码图.jpg", (800, 800)),
 }
 BUSINESS_IMAGE_MAX_BYTES = 500 * 1024
 

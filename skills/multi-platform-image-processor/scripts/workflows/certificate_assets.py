@@ -103,7 +103,7 @@ def generate_business_images(
         try:
             certificate_path = compose_certificate(
                 exported,
-                product_root / "合格证" / "合格证图.jpg",
+                product_root / "唯品会" / "合格证.jpg",
                 fabric_text=fabric_text,
                 fabric_anchor=fabric_anchor,
                 fabric_font=fabric_font,
@@ -111,7 +111,7 @@ def generate_business_images(
             )
             hangtag_path = compose_hangtag(
                 exported,
-                product_root / "吊牌图" / "吊牌图.jpg",
+                product_root / "天猫通用版" / "吊牌图.jpg",
             )
             report["业务图片"]["合格证图"] = {
                 "状态": "成功",
@@ -122,7 +122,7 @@ def generate_business_images(
             size_path = compose_size_image(
                 exported,
                 table,
-                product_root / "尺码图" / "尺码图.jpg",
+                product_root / "蜂享家＋爱库存" / "尺码图" / "尺码图.jpg",
             )
             report["业务图片"]["尺码图"] = {"状态": "成功", "路径": str(size_path)}
         except Exception as exc:
