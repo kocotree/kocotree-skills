@@ -118,6 +118,7 @@ def run_full_workflow(args: Any) -> int:
                 product_name=confirmed_product_name,
                 detail_plan=detail_plan,
                 detail_overrides=detail_overrides,
+                color_name_plan=context.get("颜色命名"),
             )
         report["路径"]["最终输出"] = str(product_output)
         if platform_code != 0:

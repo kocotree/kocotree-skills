@@ -14,6 +14,7 @@ from common import (
     平台模板目录名,
 )
 from common.quality_audit import run_quality_audit
+from common.color_naming import resolve_color_names
 from platforms.cbme import derive as derive_cbme
 from platforms.fengxiang_aikucun import derive as derive_fengxiang_aikucun
 from platforms.jd import derive as derive_jd
@@ -59,6 +60,7 @@ def run_platform_processing(
     product_name: str = "",
     detail_plan: Path | None = None,
     detail_overrides: dict[Path, Path] | None = None,
+    color_name_plan: object | None = None,
 ) -> tuple[int, Path]:
     """处理单个产品并生成六平台图片。
 
@@ -71,6 +73,7 @@ def run_platform_processing(
         product_name：Excel 确认的产品名称，用于构造京东目录名。
         detail_plan：Agent 视觉检查生成的详情模块计划路径。
         detail_overrides：原始详情图到临时面料修正版的映射。
+        color_name_plan：白底图、透明图相对路径到 SKU 颜色名称的视觉映射。
     返回值：
         退出码和实际输出目录。
     """
@@ -100,6 +103,7 @@ def run_platform_processing(
         return 2, output
 
     ensure_dir(output)
+    color_names = resolve_color_names(source, color_name_plan)
     directory_names = build_platform_directory_names(product_code, effective_product_name)
     platform_directories = {
         key: output / directory_names[key]
@@ -108,12 +112,12 @@ def run_platform_processing(
     for key in 全部平台:
         copy_template_empty_dirs(template, 平台模板目录名[key], platform_directories[key])
 
-    tmall_dir = build_tmall(source, output, report, detail_plan, detail_overrides)
+    tmall_dir = build_tmall(source, output, report, detail_plan, detail_overrides, color_names)
     derive_cbme(source, tmall_dir, output, report)
-    derive_jd(source, tmall_dir, platform_directories["jd"], report)
-    derive_vip(source, tmall_dir, output, report)
-    derive_fengxiang_aikucun(source, tmall_dir, output, report)
-    derive_offsite(source, template, output, report)
+    derive_jd(source, tmall_dir, platform_directories["jd"], report, color_names)
+    derive_vip(source, tmall_dir, output, report, color_names)
+    derive_fengxiang_aikucun(source, tmall_dir, output, report, color_names)
+    derive_offsite(source, template, output, report, color_names)
 
     run_quality_audit(report, platform_directories)
     for key in 全部平台:

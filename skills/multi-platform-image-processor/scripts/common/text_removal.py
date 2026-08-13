@@ -455,7 +455,7 @@ def process_offsite_sku_text_removal(
         actions.append("适配到 800x800 画布")
         saved = save_jpg_under(
             image, output, max_bytes, report,
-            source, platform, "800sku去除文字", actions,
+            source, platform, "sku", actions,
         )
         logger.info("站外SKU去字处理结束：%s -> %s", source, saved or output)
         return saved

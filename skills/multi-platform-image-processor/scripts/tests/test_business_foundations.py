@@ -9,7 +9,9 @@ from unittest.mock import patch
 
 import xlwt
 from openpyxl import Workbook
+from PIL import Image
 
+from common.color_naming import resolve_color_names
 from common.font_assets import load_font_assets, require_glyphs
 from common.nas_paths import require_accessible_directory, to_unc_path
 from common.product_info_reader import (
@@ -82,6 +84,45 @@ class BusinessSettingsTests(unittest.TestCase):
         template_root = Path(__file__).resolve().parents[2] / "template"
         self.assertTrue((template_root / 平台模板目录名["jd"]).is_dir())
         self.assertFalse((template_root / "京东").exists())
+
+    def test_white_and_transparent_images_use_sku_color_names(self) -> None:
+        """验证数字素材通过视觉映射使用 SKU 颜色名称。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            for relative in (
+                "SKU/800/豆蔻紫.jpg",
+                "SKU/800/远海蓝.jpg",
+                "白底图/1.jpg",
+                "白底图/2.jpg",
+                "透明图/1.png",
+                "透明图/2.png",
+            ):
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                Image.new("RGBA" if path.suffix == ".png" else "RGB", (8, 8), "white").save(path)
+
+            names = resolve_color_names(
+                root,
+                {
+                    "白底图/1.jpg": "豆蔻紫",
+                    "白底图/2.jpg": "远海蓝",
+                    "透明图/1.png": "豆蔻紫",
+                    "透明图/2.png": "远海蓝",
+                },
+            )
+
+            self.assertEqual(names[(root / "白底图/1.jpg").resolve()], "豆蔻紫")
+            self.assertEqual(names[(root / "透明图/2.png").resolve()], "远海蓝")
+
+    def test_offsite_template_uses_business_folder_names(self) -> None:
+        """验证站外模板只包含最终业务目录名称。"""
+        template_root = Path(__file__).resolve().parents[2] / "template" / "站外通用版"
+        actual = {path.name for path in template_root.iterdir() if path.is_dir()}
+
+        self.assertEqual(
+            actual,
+            {"详情页", "sku", "白底图", "白底图＋logo", "透明图", "主图", "素材图"},
+        )
 
 
 class ProductInfoTests(unittest.TestCase):

@@ -129,7 +129,7 @@ def _audit_fengxiang(root: Path, report: dict) -> None:
 def _audit_offsite(root: Path, report: dict) -> None:
     for path in list_images(root, recursive=True):
         _check_file_size(path, 500, report)
-    for path in list_images(root / "800sku去除文字"):
+    for path in list_images(root / "sku"):
         _check_dimensions(path, 800, 800, report, "站外SKU去字图尺寸不符合800x800")
         info = image_info(path)
         if info.get("格式") != "JPEG":
