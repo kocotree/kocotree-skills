@@ -258,10 +258,12 @@ class MaterialProcessingTests(unittest.TestCase):
                     TextStyle(30, (20, 20, 20)),
                     (245, 245, 245),
                     (10, 10),
+                    740,
                 )
 
             self.assertEqual(len(drawn_boxes), 2)
-            self.assertLessEqual(abs(drawn_boxes[0][2] - drawn_boxes[1][2]), 1)
+            self.assertLessEqual(abs(drawn_boxes[0][2] - 740), 1)
+            self.assertLessEqual(abs(drawn_boxes[1][2] - 740), 1)
 
 
 if __name__ == "__main__":

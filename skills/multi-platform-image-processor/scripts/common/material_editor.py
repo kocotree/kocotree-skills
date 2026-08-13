@@ -173,6 +173,7 @@ def replace_material_text(
     style: TextStyle,
     background: tuple[int, int, int] | Image.Image,
     padding: tuple[int, int] = (0, 0),
+    right_edge: int | None = None,
 ) -> Path:
     """在指定区域清理并重绘中文面料。
 
@@ -185,6 +186,7 @@ def replace_material_text(
         style：版式参数。
         background：目标区域的纯色或干净背景块。
         padding：文字相对区域左上角的内边距。
+        right_edge：文字与上下字段共用的绝对横坐标右边界。
     返回值：
         修改后的图片路径。
     """
@@ -201,8 +203,10 @@ def replace_material_text(
     else:
         ImageDraw.Draw(image).rectangle(region, fill=background)
     text_left = left + padding[0]
-    text_right = right - padding[0]
+    text_right = right_edge if right_edge is not None else right - padding[0]
     text_top = top + padding[1]
+    if not text_left < text_right <= right:
+        raise RuntimeError("面料文字右边界超出指定区域")
     maximum_width = text_right - text_left
     normalized_text = normalize_material_text(text)
     lines = wrap_mixed_text(normalized_text, fonts, style.font_size, maximum_width)

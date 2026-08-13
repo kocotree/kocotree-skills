@@ -47,7 +47,7 @@ def apply_material_plan(
             {
                 "任务名称": "定位详情页面料区域",
                 "图片路径": [str(source_root)],
-                "原因": "需要提供每处文字的相对图片路径、识别原文、区域和版式参数",
+                "原因": "需要提供每处文字的相对图片路径、识别原文、区域、右边界和版式参数",
             }
         )
         return None
@@ -71,11 +71,15 @@ def apply_material_plan(
             image = resolve_relative_image(source_root, str(raw["图片"])).resolve()
             actual = str(raw["识别原文"])
             region = parse_box(raw["区域"], "面料区域")
+            if "右边界" not in raw:
+                raise RuntimeError("面料计划缺少与上下字段共用的右边界")
+            right_edge = int(raw["右边界"])
             result: dict[str, Any] = {
                 "图片": str(image),
                 "Excel原文": expected,
                 "识别原文": actual,
                 "区域": list(region),
+                "右边界": right_edge,
             }
             if not image.is_file():
                 raise RuntimeError(f"详情图不存在：{image}")
@@ -101,6 +105,7 @@ def apply_material_plan(
                 style,
                 background,
                 padding,
+                right_edge,
             )
             if not verify_non_target_unchanged(
                 current_source,
