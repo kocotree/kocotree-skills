@@ -10,6 +10,7 @@ from common.certificate_composer import compose_certificate, compose_hangtag
 from common.delivery_quality_audit import audit_business_images
 from common.font_assets import load_font_assets
 from common.product_matcher import extract_size, select_bartender_file
+from common.settings import skill_root
 from common.size_table_extractor import CropBox, compose_size_image, extract_size_table
 from common.utils import add_report_item
 
@@ -87,7 +88,8 @@ def generate_business_images(
         )
         return False
     fabric_anchor = parse_point(fabric_anchor_value, "合格证面料锚点")
-    fabric_font = load_font_assets()["方正兰亭中黑"]
+    fabric_fonts = load_font_assets()
+    dealer_address_image = skill_root() / "assets" / "合格证-经销商地址.jpg"
     report["BarTender导出"]["合格证面料锚点"] = list(fabric_anchor)
     report["BarTender导出"]["合格证面料字号"] = fabric_font_size
     size_source = _resolve_size_source(content_root, size_source_value)
@@ -104,9 +106,10 @@ def generate_business_images(
             certificate_path = compose_certificate(
                 exported,
                 product_root / "唯品会" / "合格证.jpg",
+                dealer_address_image,
                 fabric_text=fabric_text,
                 fabric_anchor=fabric_anchor,
-                fabric_font=fabric_font,
+                fabric_fonts=fabric_fonts,
                 font_size=fabric_font_size,
             )
             hangtag_path = compose_hangtag(
@@ -117,6 +120,7 @@ def generate_business_images(
                 "状态": "成功",
                 "路径": str(certificate_path),
                 "中文面料": fabric_text,
+                "经销商地址图片": str(dealer_address_image),
             }
             report["业务图片"]["吊牌图"] = {"状态": "成功", "路径": str(hangtag_path)}
             size_path = compose_size_image(

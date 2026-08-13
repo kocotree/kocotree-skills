@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from .font_assets import FontAsset, require_glyphs
 from .utils import ensure_dir
 
 logger = logging.getLogger(__name__)
+
+_WRAP_TOKEN_PATTERN = re.compile(r"\([^()\n]*\)|\d+(?:\.\d+)?%?|\n|.", re.DOTALL)
 
 
 @dataclass(frozen=True)
@@ -28,6 +31,28 @@ def font_role(character: str) -> str:
     if character.isdigit() or character == ".":
         return "G8321"
     return "方正兰亭中黑"
+
+
+def normalize_parentheses(text: str) -> str:
+    """将面料文字中的全角括号统一为英文括号。"""
+    return text.replace("（", "(").replace("）", ")")
+
+
+def normalize_material_text(text: str) -> str:
+    """规范详情页面料文字的标签层级和括号。
+
+    参数：
+        text：产品信息 Excel 中的中文面料原文。
+    返回值：
+        可用于详情页重绘的面料文字。
+    """
+    normalized = normalize_parentheses(text.strip())
+    outer_label = re.match(r"^面料\s*[:：]\s*", normalized)
+    if outer_label:
+        remainder = normalized[outer_label.end():]
+        if re.match(r"^[^:：\n]{1,12}\s*[:：]", remainder):
+            normalized = remainder
+    return normalized
 
 
 def split_font_runs(text: str) -> list[tuple[str, str]]:
@@ -61,27 +86,40 @@ def _mixed_text_width(text: str, loaded: dict[str, ImageFont.FreeTypeFont]) -> f
     return sum(loaded[role].getlength(run) for role, run in split_font_runs(text))
 
 
+def mixed_line_height(
+    text: str,
+    fonts: dict[str, FontAsset],
+    font_size: int,
+    line_spacing: int = 0,
+) -> int:
+    """计算混合字体一行文字占用的高度。"""
+    loaded = _load_render_fonts(text, fonts, font_size)
+    return max(sum(font.getmetrics()) for font in loaded.values()) + line_spacing
+
+
 def wrap_mixed_text(
     text: str,
     fonts: dict[str, FontAsset],
     font_size: int,
     maximum_width: int,
 ) -> list[str]:
-    """按目标区域宽度为混合字体文本换行。"""
+    """按目标区域宽度换行并保持括号、数字和百分号整体。"""
     if not text:
         raise RuntimeError("面料文字不能为空")
     loaded = _load_render_fonts(text, fonts, font_size)
     lines: list[str] = []
     current = ""
-    for character in text:
-        if character == "\n":
+    for token in _WRAP_TOKEN_PATTERN.findall(text):
+        if token == "\n":
             lines.append(current)
             current = ""
             continue
-        candidate = current + character
+        if _mixed_text_width(token, loaded) > maximum_width:
+            raise RuntimeError(f"面料文字整体超出指定宽度：{token}")
+        candidate = current + token
         if current and _mixed_text_width(candidate, loaded) > maximum_width:
             lines.append(current)
-            current = character
+            current = token
         else:
             current = candidate
     if current or not lines:
@@ -166,9 +204,15 @@ def replace_material_text(
     text_right = right - padding[0]
     text_top = top + padding[1]
     maximum_width = text_right - text_left
-    lines = wrap_mixed_text(text, fonts, style.font_size, maximum_width)
-    loaded = _load_render_fonts(text, fonts, style.font_size)
-    line_height = max(sum(font.getmetrics()) for font in loaded.values()) + style.line_spacing
+    normalized_text = normalize_material_text(text)
+    lines = wrap_mixed_text(normalized_text, fonts, style.font_size, maximum_width)
+    loaded = _load_render_fonts(normalized_text, fonts, style.font_size)
+    line_height = mixed_line_height(
+        normalized_text,
+        fonts,
+        style.font_size,
+        style.line_spacing,
+    )
     for line_index, line in enumerate(lines):
         if not line:
             continue

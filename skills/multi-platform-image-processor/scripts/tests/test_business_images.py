@@ -14,6 +14,7 @@ from common.font_assets import load_font_assets
 from common.material_editor import (
     TextStyle,
     draw_mixed_text,
+    normalize_material_text,
     replace_material_text,
     split_font_runs,
     verify_non_target_unchanged,
@@ -90,13 +91,29 @@ class BusinessImageComposerTests(unittest.TestCase):
                     image.putpixel((x, y), (30, 30, 30))
         image.save(path)
 
+    @staticmethod
+    def _make_dealer_address(path: Path) -> None:
+        """生成包含明显文字块的经销商地址测试图。"""
+        image = Image.new("RGB", (595, 84), "white")
+        for x in range(10, 560):
+            for y in range(20, 70):
+                if y in {20, 40, 50, 69}:
+                    image.putpixel((x, y), (20, 20, 20))
+        image.save(path)
+
     def test_certificate_and_hangtag_sizes(self) -> None:
         """验证两种合格证图片使用白底和固定画布。"""
         with TemporaryDirectory() as temp_dir_value:
             root = Path(temp_dir_value)
             source = root / "export.png"
+            dealer_address = root / "dealer-address.png"
             self._make_certificate(source)
-            certificate = compose_certificate(source, root / "合格证" / "合格证图.jpg")
+            self._make_dealer_address(dealer_address)
+            certificate = compose_certificate(
+                source,
+                root / "合格证" / "合格证图.jpg",
+                dealer_address,
+            )
             hangtag = compose_hangtag(source, root / "吊牌图" / "吊牌图.jpg")
 
             with Image.open(certificate) as image:
@@ -109,17 +126,20 @@ class BusinessImageComposerTests(unittest.TestCase):
             self.assertLessEqual(hangtag.stat().st_size, 500 * 1024)
 
     def test_certificate_includes_excel_chinese_material(self) -> None:
-        """验证合格证图使用方正字体加入中文面料。"""
+        """验证合格证图使用混合字体加入中文面料。"""
         with TemporaryDirectory() as temp_dir_value:
             root = Path(temp_dir_value)
             source = root / "export.png"
+            dealer_address = root / "dealer-address.png"
             self._make_certificate(source)
+            self._make_dealer_address(dealer_address)
             output = compose_certificate(
                 source,
                 root / "合格证" / "合格证图.jpg",
+                dealer_address,
                 fabric_text="面料：棉95%氨纶5%",
                 fabric_anchor=(360, 100),
-                fabric_font=load_font_assets()["方正兰亭中黑"],
+                fabric_fonts=load_font_assets(),
                 font_size=20,
             )
 
@@ -172,6 +192,20 @@ class MaterialProcessingTests(unittest.TestCase):
         lines = wrap_mixed_text("棉95%氨纶5%", load_font_assets(), 36, 120)
         self.assertGreater(len(lines), 1)
 
+    def test_material_format_keeps_semantic_units(self) -> None:
+        """验证重复标签、英文括号和不可拆分内容的格式规则。"""
+        text = normalize_material_text(
+            "面料：面层：80%聚酯纤维20%粘纤（含胶）\n底层：100%聚酯纤维"
+        )
+
+        self.assertEqual(
+            text,
+            "面层：80%聚酯纤维20%粘纤(含胶)\n底层：100%聚酯纤维",
+        )
+        lines = wrap_mixed_text(text, load_font_assets(), 30, 250)
+        self.assertTrue(any("(含胶)" in line for line in lines))
+        self.assertTrue(any("100%" in line for line in lines))
+
     def test_repaint_changes_only_target_region(self) -> None:
         """验证面料重绘不改变指定区域以外的像素。"""
         with TemporaryDirectory() as temp_dir_value:
@@ -203,11 +237,18 @@ class MaterialProcessingTests(unittest.TestCase):
             source = root / "before.png"
             output = root / "after.png"
             Image.new("RGB", (900, 300), (245, 245, 245)).save(source)
+            drawn_boxes: list[tuple[int, int, int, int]] = []
+
+            def capture_draw(*args: object, **kwargs: object) -> tuple[int, int, int, int]:
+                """记录每行混合字体的实际绘制边界。"""
+                box = draw_mixed_text(*args, **kwargs)
+                drawn_boxes.append(box)
+                return box
 
             with patch(
                 "common.material_editor.draw_mixed_text",
-                wraps=draw_mixed_text,
-            ) as draw:
+                side_effect=capture_draw,
+            ):
                 replace_material_text(
                     source,
                     output,
@@ -219,9 +260,8 @@ class MaterialProcessingTests(unittest.TestCase):
                     (10, 10),
                 )
 
-            first_x = draw.call_args_list[0].args[1][0]
-            second_x = draw.call_args_list[1].args[1][0]
-            self.assertGreater(second_x, first_x)
+            self.assertEqual(len(drawn_boxes), 2)
+            self.assertLessEqual(abs(drawn_boxes[0][2] - drawn_boxes[1][2]), 1)
 
 
 if __name__ == "__main__":
