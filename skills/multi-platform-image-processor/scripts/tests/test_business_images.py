@@ -6,7 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from PIL import Image
+from PIL import Image, ImageChops
 
 from common.bartender_exporter import export_bartender_image, fingerprint
 from common.certificate_composer import compose_certificate, compose_hangtag
@@ -237,33 +237,37 @@ class MaterialProcessingTests(unittest.TestCase):
             source = root / "before.png"
             output = root / "after.png"
             Image.new("RGB", (900, 300), (245, 245, 245)).save(source)
-            drawn_boxes: list[tuple[int, int, int, int]] = []
+            replace_material_text(
+                source,
+                output,
+                (100, 60, 800, 220),
+                "面料：面层：80%聚酯纤维\n底层：100%聚酯纤维",
+                load_font_assets(),
+                TextStyle(30, (20, 20, 20)),
+                (245, 245, 245),
+                (10, 10),
+                740,
+            )
 
-            def capture_draw(*args: object, **kwargs: object) -> tuple[int, int, int, int]:
-                """记录每行混合字体的实际绘制边界。"""
-                box = draw_mixed_text(*args, **kwargs)
-                drawn_boxes.append(box)
-                return box
-
-            with patch(
-                "common.material_editor.draw_mixed_text",
-                side_effect=capture_draw,
-            ):
-                replace_material_text(
-                    source,
-                    output,
-                    (100, 60, 800, 220),
-                    "面料：面层：80%聚酯纤维\n底层：100%聚酯纤维",
-                    load_font_assets(),
-                    TextStyle(30, (20, 20, 20)),
-                    (245, 245, 245),
-                    (10, 10),
-                    740,
-                )
-
-            self.assertEqual(len(drawn_boxes), 2)
-            self.assertLessEqual(abs(drawn_boxes[0][2] - 740), 1)
-            self.assertLessEqual(abs(drawn_boxes[1][2] - 740), 1)
+            with Image.open(output) as opened:
+                crop = opened.convert("RGB").crop((100, 60, 800, 220))
+            mask = ImageChops.difference(
+                crop,
+                Image.new("RGB", crop.size, (245, 245, 245)),
+            ).convert("L").point(lambda value: 255 if value > 10 else 0)
+            occupied_rows = [
+                y for y in range(mask.height)
+                if mask.crop((0, y, mask.width, y + 1)).getbbox()
+            ]
+            split = next(
+                index for index in range(1, len(occupied_rows))
+                if occupied_rows[index] - occupied_rows[index - 1] > 2
+            )
+            row_groups = (occupied_rows[:split], occupied_rows[split:])
+            for rows in row_groups:
+                box = mask.crop((0, rows[0], mask.width, rows[-1] + 1)).getbbox()
+                self.assertIsNotNone(box)
+                self.assertLessEqual(abs(100 + box[2] - 740), 1)
 
 
 if __name__ == "__main__":

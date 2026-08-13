@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 import main as main_module
 from common.delivery_quality_audit import audit_business_images
@@ -118,11 +118,13 @@ class MaterialPlanTests(unittest.TestCase):
             root = Path(temp_dir_value)
             detail = root / "数据包" / "详情" / "静态" / "601.jpg"
             detail.parent.mkdir(parents=True)
-            Image.effect_noise((900, 300), 80).convert("RGB").save(
-                detail,
-                "JPEG",
-                quality=90,
-            )
+            source_image = Image.new("RGB", (900, 300), (245, 245, 245))
+            draw = ImageDraw.Draw(source_image)
+            draw.rectangle((450, 95, 779, 114), fill=(25, 25, 25))
+            draw.rectangle((560, 135, 779, 154), fill=(25, 25, 25))
+            draw.rectangle((700, 20, 779, 45), fill=(25, 25, 25))
+            draw.rectangle((710, 230, 779, 255), fill=(25, 25, 25))
+            source_image.save(detail, "JPEG", quality=95)
             plan = root / "plan.json"
             plan.write_text(
                 json.dumps(
@@ -132,8 +134,10 @@ class MaterialPlanTests(unittest.TestCase):
                                 "图片": "数据包/详情/静态/601.jpg",
                                 "识别原文": "棉90%氨纶10%",
                                 "区域": [100, 80, 800, 180],
-                                "右边界": 790,
-                                "字号": 36,
+                                "右侧字段参考区域": [
+                                    [650, 10, 800, 60],
+                                    [650, 220, 800, 270]
+                                ],
                                 "颜色": [20, 20, 20],
                                 "背景色": [245, 245, 245],
                                 "内边距": [10, 15],
@@ -164,6 +168,8 @@ class MaterialPlanTests(unittest.TestCase):
             self.assertEqual(verifier.call_args.kwargs["difference_threshold"], 12)
             self.assertFalse(report["失败项"])
             self.assertTrue(report["面料检查"]["检查项"][0]["已修改"])
+            self.assertEqual(report["面料检查"]["检查项"][0]["测量右边界"], 780)
+            self.assertGreater(report["面料检查"]["检查项"][0]["测量字号"], 0)
             self.assertEqual(detail.read_bytes(), original_bytes)
             corrected = replacements[detail.resolve()]
             self.assertTrue(corrected.is_file())

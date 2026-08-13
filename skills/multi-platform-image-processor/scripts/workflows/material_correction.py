@@ -7,7 +7,9 @@ from typing import Any
 from common.font_assets import load_font_assets
 from common.material_editor import (
     TextStyle,
+    measure_material_layout,
     replace_material_text,
+    verify_measured_material_layout,
     verify_non_target_unchanged,
 )
 from common.utils import add_report_item
@@ -47,7 +49,7 @@ def apply_material_plan(
             {
                 "任务名称": "定位详情页面料区域",
                 "图片路径": [str(source_root)],
-                "原因": "需要提供每处文字的相对图片路径、识别原文、区域、右边界和版式参数",
+                "原因": "需要提供每处文字的相对图片路径、识别原文、区域和上下字段参考区域",
             }
         )
         return None
@@ -71,27 +73,42 @@ def apply_material_plan(
             image = resolve_relative_image(source_root, str(raw["图片"])).resolve()
             actual = str(raw["识别原文"])
             region = parse_box(raw["区域"], "面料区域")
-            if "右边界" not in raw:
-                raise RuntimeError("面料计划缺少与上下字段共用的右边界")
-            right_edge = int(raw["右边界"])
+            reference_values = raw.get("右侧字段参考区域")
+            if not isinstance(reference_values, list) or not reference_values:
+                raise RuntimeError("面料计划缺少右侧字段参考区域")
+            reference_regions = [
+                parse_box(value, "右侧字段参考区域") for value in reference_values
+            ]
             result: dict[str, Any] = {
                 "图片": str(image),
                 "Excel原文": expected,
                 "识别原文": actual,
                 "区域": list(region),
-                "右边界": right_edge,
             }
             if not image.is_file():
                 raise RuntimeError(f"详情图不存在：{image}")
             color = tuple(int(value) for value in raw.get("颜色", [0, 0, 0]))
             background = tuple(int(value) for value in raw["背景色"])
             padding = tuple(int(value) for value in raw.get("内边距", [0, 0]))
-            style = TextStyle(
-                int(raw["字号"]),
-                color,
-                int(raw.get("行距", 6)),
-            )
             current_source = replacements.get(image, image)
+            layout = measure_material_layout(
+                current_source,
+                region,
+                reference_regions,
+                expected,
+                fonts,
+                background,
+                padding[0],
+            )
+            style = TextStyle(
+                layout.font_size,
+                color,
+                layout.line_spacing,
+            )
+            result["测量字号"] = layout.font_size
+            result["测量右边界"] = layout.reference_right
+            result["原文字高"] = layout.source_ink_height
+            result["右侧字段参考区域"] = [list(value) for value in reference_regions]
             relative = image.relative_to(source_root)
             corrected = staging_root / relative.parent / f"{relative.name}.png"
             corrected.parent.mkdir(parents=True, exist_ok=True)
@@ -104,8 +121,15 @@ def apply_material_plan(
                 fonts,
                 style,
                 background,
-                padding,
-                right_edge,
+                (padding[0], layout.padding_top),
+                layout.text_right,
+            )
+            verify_measured_material_layout(
+                temporary,
+                region,
+                background,
+                layout.reference_right,
+                layout.source_ink_height,
             )
             if not verify_non_target_unchanged(
                 current_source,
