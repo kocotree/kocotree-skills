@@ -37,7 +37,7 @@ def audit_business_images(
 
     参数：
         product_root：业务图片所在产品目录。
-        report：需要记录质检结果的顶层报告。
+        report：需要记录质检结果的完整报告。
     返回值：
         全部必需自动检查通过时返回 True。
     """

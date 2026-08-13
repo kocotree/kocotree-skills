@@ -18,7 +18,7 @@ from common.utils import new_report
 from common.write_report import write_report
 from workflows.full_package import run_full_workflow
 from workflows.material_correction import apply_material_plan
-from workflows.platform_processing import run_platform_processing
+from workflows.platform_processing import resolve_source_and_output, run_platform_processing
 
 
 class UnifiedEntryTests(unittest.TestCase):
@@ -43,9 +43,21 @@ class UnifiedEntryTests(unittest.TestCase):
         self.assertEqual(code, 0)
         runner.assert_called_once()
 
+    def test_direct_product_directory_keeps_product_name_in_output(self) -> None:
+        """验证直接输入素材目录时输出包保留产品目录名。"""
+        source = Path("KQ26193 小跃动自在裤")
+        resolved_source, output, product_name = resolve_source_and_output(
+            source,
+            Path("输出"),
+        )
+
+        self.assertEqual(resolved_source, source)
+        self.assertEqual(product_name, source.name)
+        self.assertRegex(output.name, r"^KQ26193 小跃动自在裤_\d{8}-\d{6}$")
+
 
 class WorkflowReportTests(unittest.TestCase):
-    """验证业务顶层报告和业务图片自动质检。"""
+    """验证完整处理报告和业务图片自动质检。"""
 
     def test_report_status_reflects_review_and_failures(self) -> None:
         """验证完成状态由失败项和复核项决定。"""

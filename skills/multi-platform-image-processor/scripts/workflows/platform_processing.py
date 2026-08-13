@@ -38,7 +38,7 @@ def default_output_path() -> Path:
 
 
 def resolve_source_and_output(source: Path, output_root: Path) -> tuple[Path, Path, str]:
-    """解析单产品标准数据包和带时间戳输出目录。"""
+    """解析产品素材根目录和带产品名的时间戳输出目录。"""
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     if source.name == "数据包":
         product_name = source.parent.name
@@ -46,7 +46,8 @@ def resolve_source_and_output(source: Path, output_root: Path) -> tuple[Path, Pa
     data_pack = source / "数据包"
     if data_pack.is_dir():
         return data_pack, output_root / f"{source.name}_{timestamp}", source.name
-    return source, output_root / timestamp, ""
+    product_name = source.name
+    return source, output_root / f"{product_name}_{timestamp}", product_name
 
 
 def run_platform_processing(

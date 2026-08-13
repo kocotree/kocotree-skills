@@ -38,7 +38,7 @@ def apply_material_plan(
         expected：Excel 中文面料原文。
         plan_path：Agent 生成的视觉定位计划。
         staging_root：仅存放面料修正版的任务临时目录。
-        report：业务顶层报告。
+        report：完整处理报告。
     返回值：
         成功时返回原图到修正版的映射；失败时返回 None。
     """

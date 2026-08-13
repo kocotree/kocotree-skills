@@ -44,7 +44,7 @@ def generate_business_images(
         product_root：业务图片输出产品目录。
         content_root：详情图相对路径解析根目录。
         certificate_root：BarTender 文件目录。
-        report：业务顶层报告。
+        report：完整处理报告。
     返回值：
         图片生成和自动质检通过时返回 True。
     """
