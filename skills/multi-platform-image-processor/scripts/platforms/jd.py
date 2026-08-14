@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from common import ensure_dir
-from common.detail_page_slice import scale_detail_pages_from_master
+from common.color_naming import color_output_name
+from common.detail_page_slice import scale_detail_pages
 from common.image_resize_compress import process_jpg_original_or_compress
 from common.scan_source_pack import get_image_group
 from common.transparent_image_fit import process_square_transparent_image
@@ -12,14 +13,21 @@ from common.transparent_image_fit import process_square_transparent_image
 平台 = "京东"
 
 
-def derive(source_root: Path, tmall_dir: Path, platform_dir: Path, report: dict) -> Path:
-    """从源素材和天猫母版生成京东平台图片包。
+def derive(
+    source_root: Path,
+    tmall_dir: Path,
+    platform_dir: Path,
+    report: dict,
+    color_names: dict[Path, str],
+) -> Path:
+    """从源素材和天猫已生成详情页生成京东平台图片包。
 
     参数：
         source_root: 源数据包根目录，用于读取主图和透明图。
-        tmall_dir: 天猫通用版输出目录，用于读取 790px 宽详情页母版。
+        tmall_dir: 天猫通用版输出目录，用于读取 790px 宽详情页。
         platform_dir: 包含产品货号和名称的京东平台输出目录。
         report: 处理报告，记录图片结果、风险、警告和失败项。
+        color_names: 白底图、透明图源路径到 SKU 颜色名称的映射。
 
     返回值：
         京东平台输出目录路径。
@@ -30,8 +38,16 @@ def derive(source_root: Path, tmall_dir: Path, platform_dir: Path, report: dict)
     ensure_dir(platform_dir / "800sku")
     transparent_dir = ensure_dir(platform_dir / "透明图")
     for source in get_image_group(source_root, "透明图"):
-        process_square_transparent_image(source, transparent_dir / f"{source.stem}.png", 800, 500 * 1024, report, 平台, "透明图")
-    scale_detail_pages_from_master(tmall_dir / "790详情页", platform_dir / "详情页", 790, 1600, 500 * 1024, report, 平台, "详情页")
+        process_square_transparent_image(
+            source,
+            transparent_dir / color_output_name(source, color_names, ".png"),
+            800,
+            500 * 1024,
+            report,
+            平台,
+            "透明图",
+        )
+    scale_detail_pages(tmall_dir / "790详情页", platform_dir / "详情页", 790, 1600, 500 * 1024, report, 平台, "详情页")
     return platform_dir
 
 

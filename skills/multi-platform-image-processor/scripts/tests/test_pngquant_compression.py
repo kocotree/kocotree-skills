@@ -100,7 +100,7 @@ class PngquantCompressionTests(unittest.TestCase):
         with TemporaryDirectory() as temp_dir_value:
             temp_dir = Path(temp_dir_value)
             report_path = temp_dir / "产品A-report.json"
-            report = new_report(temp_dir, None, temp_dir / "输出", "tmall")
+            report = new_report(temp_dir, None, temp_dir / "输出")
             report["处理配置"].update({"运行ID": "run-001", "产品名": "产品A"})
             compression = {
                 "状态": "执行失败",
@@ -143,7 +143,7 @@ class PngquantCompressionTests(unittest.TestCase):
         """验证 PNG 有效压缩结果仍超限时记录失败项。"""
         with TemporaryDirectory() as temp_dir_value:
             root = Path(temp_dir_value)
-            report = new_report(root, None, root / "输出", "tmall")
+            report = new_report(root, None, root / "输出")
             compression = {
                 "状态": "超出限制",
                 "尝试次数": 2,

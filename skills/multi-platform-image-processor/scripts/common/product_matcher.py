@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .nas_paths import list_files_fast
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -55,49 +57,59 @@ def extract_size(text: str) -> int | None:
 
 def select_bartender_file(
     root: Path,
-    product_code: str,
-    product_name: str = "",
-    color: str = "",
+    product_name: str,
+    color: str,
     preferred_size: int = 110,
 ) -> MatchResult:
     """匹配产品并选择一份代表 BarTender 文件。
 
     参数：
         root：合格证文件根目录。
-        product_code：精确匹配的产品货号。
-        product_name：用于复核的产品名称。
-        color：用户指定的代表颜色。
+        product_name：产品信息 Excel 中的正式产品名称。
+        color：产品信息 Excel 中确定的代表颜色。
         preferred_size：优先尺码。
     返回值：
         选中文件、产品候选和选择说明。
     """
+    logger.info(
+        "开始匹配 BarTender product=%r color=%r root=%r",
+        product_name,
+        color,
+        str(root),
+    )
+    name_key = normalize_identity(product_name)
+    if not name_key:
+        return MatchResult(None, [], "产品信息 Excel 缺少正式产品名称")
+    product_directories = sorted(
+        (
+            path for path in root.iterdir()
+            if path.is_dir() and normalize_identity(path.name) == name_key
+        ),
+        key=lambda path: path.name.casefold(),
+    )
+    if not product_directories:
+        return MatchResult(None, [], f"没有找到产品名称对应的合格证目录：{product_name}")
+    if len(product_directories) > 1:
+        return MatchResult(None, product_directories, f"产品名称对应多个合格证目录：{product_name}")
+
+    product_directory = product_directories[0]
+    logger.info("已匹配合格证产品目录 path=%r", str(product_directory))
     candidates = sorted(
         (
-            path for path in list_files_fast(root, {".btw"}, product_code)
-            if contains_exact_code(str(path.relative_to(root)), product_code)
+            path for path in product_directory.iterdir()
+            if path.is_file() and path.suffix.casefold() == ".btw"
         ),
-        key=lambda path: path.as_posix().casefold(),
+        key=lambda path: path.name.casefold(),
     )
     if not candidates:
-        candidates = sorted(
-            (
-                path for path in list_files_fast(root, {".btw"})
-                if contains_exact_code(str(path.relative_to(root)), product_code)
-            ),
-            key=lambda path: path.as_posix().casefold(),
-        )
-    if product_name:
-        name_key = normalize_identity(product_name)
-        named = [path for path in candidates if name_key in normalize_identity(path)]
-        if not named:
-            return MatchResult(None, candidates, "货号候选与产品名称不一致")
-        candidates = named
-    if color:
-        color_key = normalize_identity(color)
-        colored = [path for path in candidates if color_key in normalize_identity(path)]
-        if not colored:
-            return MatchResult(None, candidates, f"没有找到指定颜色 {color} 的 BarTender 文件")
-        candidates = colored
+        return MatchResult(None, [], f"产品合格证目录中没有顶层 BarTender 文件：{product_directory}")
+    color_key = normalize_identity(color)
+    if not color_key:
+        return MatchResult(None, candidates, "产品信息 Excel 缺少可识别的代表颜色")
+    colored = [path for path in candidates if color_key in normalize_identity(path.stem)]
+    if not colored:
+        return MatchResult(None, candidates, f"没有找到代表颜色 {color} 的 BarTender 文件")
+    candidates = colored
     sized = [(path, extract_size(path.stem)) for path in candidates]
     valid = [(path, size) for path, size in sized if size is not None]
     if not valid:
@@ -108,8 +120,6 @@ def select_bartender_file(
     target = [path for path, size in valid if size == target_size]
     if len(target) == 1:
         reason = f"选择优先尺码 {target_size}" if target_size == preferred_size else f"选择最小尺码 {target_size}"
+        logger.info("BarTender 文件匹配完成 path=%r reason=%s", str(target[0]), reason)
         return MatchResult(target[0], candidates, reason)
-    if color:
-        return MatchResult(None, target, f"指定颜色的尺码 {target_size} 存在多个候选")
-    reason = f"未指定颜色，按自然顺序选择尺码 {target_size} 的首个代表候选"
-    return MatchResult(target[0], candidates, reason)
+    return MatchResult(None, target, f"代表颜色 {color} 的尺码 {target_size} 存在多个候选")

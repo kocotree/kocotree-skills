@@ -4,6 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from common import add_failure, add_review_suggestion, ensure_dir
+from common.color_naming import color_output_name
 from common.detail_page_slice import generate_sequential_detail_pages, prepare_ordered_detail_sources
 from common.image_resize_compress import process_jpg_original_or_compress, process_png_original_or_compress
 from common.scan_source_pack import 源目录规则, get_image_group, get_sku800, get_sku1440
@@ -12,14 +13,23 @@ from common.scan_source_pack import 源目录规则, get_image_group, get_sku800
 平台 = "天猫通用版"
 
 
-def build(source_root: Path, output_root: Path, report: dict, detail_plan: Path | None = None) -> Path:
-    """生成天猫通用版并建立六平台详情页母版。
+def build(
+    source_root: Path,
+    output_root: Path,
+    report: dict,
+    detail_plan: Path | None = None,
+    detail_overrides: dict[Path, Path] | None = None,
+    color_names: dict[Path, str] | None = None,
+) -> Path:
+    """生成天猫通用版和六平台共用的详情页。
 
     参数：
-        source_root：已验证的产品数据包根目录。
+        source_root：产品数据包根目录。
         output_root：六平台输出根目录。
         report：用于记录图片处理与异常的报告。
         detail_plan：Agent 视觉检查生成的详情模块计划路径。
+        detail_overrides：原始详情图到临时面料修正版的映射。
+        color_names：白底图、透明图源路径到 SKU 颜色名称的映射。
     返回值：
         天猫通用版输出目录路径。
     """
@@ -29,8 +39,8 @@ def build(source_root: Path, output_root: Path, report: dict, detail_plan: Path 
     _batch_jpg(get_image_group(source_root, "主图750"), platform_dir / "主图" / "750 1000主图", "主图\\750 1000主图", report)
     _batch_jpg(get_sku800(source_root), platform_dir / "sku" / "800", "sku\\800", report)
     _batch_jpg(get_sku1440(source_root), platform_dir / "sku" / "1440", "sku\\1440", report)
-    _batch_jpg(get_image_group(source_root, "白底图"), platform_dir / "800白底图", "800白底图", report)
-    _batch_png(get_image_group(source_root, "透明图"), platform_dir / "800透明图", "800透明图", report)
+    _batch_color_jpg(get_image_group(source_root, "白底图"), platform_dir / "800白底图", "800白底图", report, color_names or {})
+    _batch_color_png(get_image_group(source_root, "透明图"), platform_dir / "800透明图", "800透明图", report, color_names or {})
     _copy_material_images(get_image_group(source_root, "素材图", recursive=True), source_root / 源目录规则["素材图"], platform_dir / "素材图", report)
 
     detail_dir = platform_dir / "790详情页"
@@ -44,6 +54,7 @@ def build(source_root: Path, output_root: Path, report: dict, detail_plan: Path 
                 detail_plan,
                 Path(staging_value),
                 report,
+                detail_overrides,
             )
             detail_outputs = generate_sequential_detail_pages(
                 detail_sources,
@@ -73,10 +84,42 @@ def _batch_jpg(sources: list[Path], output_dir: Path, usage: str, report: dict) 
         process_jpg_original_or_compress(source, output_dir / f"{source.stem}.jpg", 500 * 1024, report, 平台, usage)
 
 
-def _batch_png(sources: list[Path], output_dir: Path, usage: str, report: dict) -> None:
+def _batch_color_jpg(
+    sources: list[Path],
+    output_dir: Path,
+    usage: str,
+    report: dict,
+    color_names: dict[Path, str],
+) -> None:
     ensure_dir(output_dir)
     for source in sources:
-        process_png_original_or_compress(source, output_dir / f"{source.stem}.png", 500 * 1024, report, 平台, usage)
+        process_jpg_original_or_compress(
+            source,
+            output_dir / color_output_name(source, color_names, ".jpg"),
+            500 * 1024,
+            report,
+            平台,
+            usage,
+        )
+
+
+def _batch_color_png(
+    sources: list[Path],
+    output_dir: Path,
+    usage: str,
+    report: dict,
+    color_names: dict[Path, str],
+) -> None:
+    ensure_dir(output_dir)
+    for source in sources:
+        process_png_original_or_compress(
+            source,
+            output_dir / color_output_name(source, color_names, ".png"),
+            500 * 1024,
+            report,
+            平台,
+            usage,
+        )
 
 
 def _copy_material_images(sources: list[Path], source_base: Path, output_dir: Path, report: dict) -> None:

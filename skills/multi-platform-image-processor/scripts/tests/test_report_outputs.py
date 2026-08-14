@@ -38,7 +38,7 @@ class ReportOutputsTests(unittest.TestCase):
             Image.new("RGB", (20, 16), (220, 220, 220)).save(source)
             Image.new("RGB", (10, 8), (210, 210, 210)).save(output)
             report_path = temp_dir / "产品A-20260731-152030-report.json"
-            report = new_report(temp_dir, None, temp_dir / "输出", "tmall")
+            report = new_report(temp_dir, None, temp_dir / "输出")
             report["处理配置"]["运行ID"] = "20260731-152030"
             report["处理配置"]["产品名"] = "产品A"
             report["追溯文件"]["运行日志"] = str(temp_dir / "logs" / "20260731-152030.log")

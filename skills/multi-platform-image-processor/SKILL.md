@@ -1,22 +1,15 @@
 ---
 name: multi-platform-image-processor
-description: 全自动处理单个商品图片数据包，依据产品信息 Excel 检查并修正详情页中文面料，生成天猫、京东、CBME、唯品会、蜂享家＋爱库存、站外通用版图片，以及合格证图、吊牌图、尺码图和完整质检报告。
+description: 全自动处理单个商品图片数据包，依据产品信息 Excel 检查并修正详情页中文面料，生成天猫、京东、CBME、唯品会、蜂享家＋爱库存、站外通用版图片，以及合格证图、吊牌图和尺码图，并完成内部质检。
+metadata:
+  version: "2.0.0"
 ---
 
 # 多平台图片处理
 
 ## 输入
 
-业务用户提供产品数据包路径。支持以下两种等价入口：
-
-```text
-产品目录
-└─ 数据包
-
-数据包
-```
-
-目录名能够唯一识别产品货号时直接使用；否则补充产品货号。产品名称用于同货号候选复核。输出位置为空时使用默认输出目录。
+业务用户提供产品目录或其中的数据包路径。产品目录可以直接包含素材目录，也可以在下层使用“数据包”目录。目录名能够唯一识别产品货号时直接使用；否则补充产品货号。产品名称用于同货号候选复核。
 
 ## 环境准备
 
@@ -27,11 +20,7 @@ uv sync
 .venv\Scripts\python.exe init.py
 ```
 
-初始化校验 Python 环境、PNG 压缩工具、业务字体、Excel 读取能力、NAS 业务目录和 BarTender。
-
 ## 执行
-
-标准命令：
 
 ```powershell
 .venv\Scripts\python.exe main.py --source "产品数据包路径"
@@ -43,35 +32,34 @@ uv sync
 - `--product-code`：产品货号。
 - `--product-name`：产品名称。
 
-Agent 在执行前逐张检查详情页，完成模块分类、连体图拆分边界、面料区域和实际尺码表区域定位，将结果作为内部上下文传给脚本。业务用户只需提供产品数据包和必要的产品身份信息。
+Agent 在执行前生成内部视觉上下文，业务用户无需提供视觉定位参数。
 
 ## 固定流程
 
-1. 识别产品身份并将 NAS 路径归一为 UNC 路径。
-2. 唯一匹配产品信息 Excel 与现有 BarTender 文件。
-3. 创建本地工作副本，依据 Excel 中文面料检查并修正详情页母版。
-4. 检查详情页必需模块，按业务顺序重排并在安全边界拆分连体图。
-5. 生成天猫、京东、CBME、唯品会、蜂享家＋爱库存和站外通用版图片。
-6. 生成 `合格证\合格证图.jpg`、`吊牌图\吊牌图.jpg` 和 `尺码图\尺码图.jpg`。
-7. 执行平台、业务图片和面料质检，写入顶层报告、平台子报告、运行日志和逐图明细。
+1. 识别产品身份并解析 NAS 业务路径。
+2. 唯一匹配产品信息 Excel 与 BarTender 文件。
+3. 依据 Excel 中文面料检查和修正详情页。
+4. 检查详情页模块，排序并拆分连体图。
+5. 生成六平台图片。
+6. 生成合格证图、吊牌图和尺码图。
+7. 执行自动检查和 Agent 视觉复核。
+8. 输出完整产品交付目录，在 Codex 页面说明处理结果。
+
+原始产品素材只读。任务临时文件、唯一完整报告、逐图明细和日志保存在 Skill 内部。Agent 复核结论仅在 Codex 页面输出，产品交付目录只包含业务产物。
 
 ## 规则索引
 
-- 平台输入、转换和目录规则：[platform_rules.md](references/platform_rules.md)
-- 合格证图、吊牌图和尺码图：[certificate_assets.md](references/certificate_assets.md)
-- 详情页面料检查与字体规则：[material_correction.md](references/material_correction.md)
-- NAS、Excel 与 BarTender 匹配：[nas_and_product_sources.md](references/nas_and_product_sources.md)
-- 输出目录、报告和失败策略：[output_contract.md](references/output_contract.md)
-- 自动检查与完成判定：[quality_checks.md](references/quality_checks.md)
-- Agent 视觉定位与复核：[agent_visual_tasks.md](references/agent_visual_tasks.md)
+- 输入目录树：[input_structure.md](references/input_structure.md)
+- 六平台转换规则：[platform_rules.md](references/platform_rules.md)
+- NAS、Excel、面料、BarTender 和业务图片：[business_rules.md](references/business_rules.md)
+- Agent 视觉定位与复核：[visual_review.md](references/visual_review.md)
+- 交付目录、内部报告和完成状态：[output_contract.md](references/output_contract.md)
 
 ## 完成要求
 
-- 产品信息 Excel 和 BarTender 文件匹配唯一。
-- 详情页全部面料区域已依据 Excel 中文原文完成检查，差异项已修正。
-- 六个平台目录与三张业务图片存在并通过自动检查。
-- 蜂享家＋爱库存详情页单张不超过 `1MB`，其余交付图片单张不超过 `500KB`。
-- Agent 已完成详情模块、站外去字、透明图、面料、尺码表和业务图片的视觉复核。
-- 顶层报告和平台子报告没有未解决的失败项。
-
-缺少 Excel、BarTender、实际尺码表或可靠视觉区域时，报告已完成结果、候选文件和具体阻塞项。
+- Excel 和 BarTender 匹配唯一。
+- 详情页面料与 Excel 中文原文一致。
+- 六平台目录与三张业务图片完整。
+- 图片尺寸、格式、透明通道、文件大小和命名符合规则。
+- Agent 完成详情模块、站外去字、透明图、面料、尺码表和业务图片复核。
+- 内部完整报告没有未解决失败项。

@@ -13,7 +13,9 @@ from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
 
-from .utils import ensure_dir, add_failure, add_risk
+from PIL import Image
+
+from .utils import add_failure, add_review_suggestion, add_risk, ensure_dir
 from .image_resize_compress import fit_into_canvas, open_image, save_jpg_under
 from .sku_card_crop import (
     CardCropError,
@@ -346,6 +348,7 @@ def process_offsite_sku_text_removal(
             image = None
             attempt_failures: list[str] = []
             generated_paths: list[str] = []
+            review_candidates: list[tuple[int, Image.Image, dict]] = []
             for attempt in range(1, TEXT_REMOVAL_MAX_ATTEMPTS + 1):
                 logger.info(
                     "调用站外SKU去字模型：%s，第%d/%d次",
@@ -365,14 +368,19 @@ def process_offsite_sku_text_removal(
                     generated_image = open_image(generated)
                     normalized = normalize_model_output(generated_image, model_input.size)
                     audit = validate_protected_regions(model_input, normalized, plan)
+                    candidate_image = composite_editable_regions(source_image, normalized, plan)
                     if not audit["通过"]:
-                        raise CardCropError(
-                            "模型结果未通过右侧及标签内部验收："
+                        review_candidates.append((attempt, candidate_image, audit))
+                        reason = (
+                            f"第{attempt}次候选超出数值参考线："
                             f"平均通道差异{audit['平均通道差异']}，"
                             f"明显变化比例{audit['明显变化比例']}，"
                             f"标签内部非文字变化比例{audit['标签内部非文字变化比例']}"
                         )
-                    image = composite_editable_regions(source_image, normalized, plan)
+                        actions.append(reason)
+                        logger.warning("%s，保留给Agent视觉选择", reason)
+                        continue
+                    image = candidate_image
                     actions.extend([
                         f"第{attempt}次模型去字成功：{message}",
                         f"模型输出恢复到{model_input.width}x{model_input.height}",
@@ -395,14 +403,44 @@ def process_offsite_sku_text_removal(
                     actions.append(reason)
                     logger.warning("%s", reason)
 
-            if image is None:
+            if image is None and review_candidates:
+                candidate_paths: list[Path] = []
+                candidate_audits = []
+                for attempt, candidate_image, audit in review_candidates:
+                    candidate_path = save_jpg_under(
+                        fit_into_canvas(candidate_image, (800, 800)),
+                        temp_dir / f"{source.stem}-{uuid4().hex}-candidate-{attempt}.jpg",
+                        max_bytes,
+                    )
+                    if candidate_path is not None:
+                        candidate_paths.append(candidate_path)
+                        candidate_audits.append({"候选图": str(candidate_path), "数值结果": audit})
+                image = source_image
+                actions.append("数值超限候选交由Agent视觉选择，交付位置暂用原图")
+                add_risk(
+                    report,
+                    "站外SKU去字候选需要Agent视觉选择",
+                    源文件=str(source),
+                    输出文件=str(output),
+                    候选=candidate_audits,
+                )
+                add_review_suggestion(
+                    report,
+                    f"站外SKU去字候选选择：{source.name}",
+                    [source, output, *candidate_paths],
+                    (
+                        "对比原图、当前交付图和候选预览，判断文字是否清除且非文字内容是否正常；"
+                        "选候选图时将它覆盖到对应交付图，选原图时保留当前交付图。"
+                    ),
+                )
+            elif image is None:
                 image = source_image
                 actions.append(
                     f"模型去字尝试{TEXT_REMOVAL_MAX_ATTEMPTS}次仍失败，按原图压缩输出"
                 )
                 add_risk(
                     report,
-                    "模型去字重试后仍失败，已按原图压缩输出",
+                    "模型未产生可用图片，已按原图压缩输出",
                     源文件=str(source),
                     输出文件=str(output),
                     尝试次数=TEXT_REMOVAL_MAX_ATTEMPTS,
@@ -417,7 +455,7 @@ def process_offsite_sku_text_removal(
         actions.append("适配到 800x800 画布")
         saved = save_jpg_under(
             image, output, max_bytes, report,
-            source, platform, "800sku去除文字", actions,
+            source, platform, "sku", actions,
         )
         logger.info("站外SKU去字处理结束：%s -> %s", source, saved or output)
         return saved

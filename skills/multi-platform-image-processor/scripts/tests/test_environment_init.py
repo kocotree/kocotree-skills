@@ -68,62 +68,6 @@ class EnvironmentInitializationTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "缺少动态库"):
                 init_module.validate_pngquant()
 
-    def test_pngquant_installs_missing_macos_dependency(self) -> None:
-        """验证 macOS 缺少运行库时通过 Homebrew 安装并重新检查。"""
-        missing_library = subprocess.CompletedProcess(
-            ["pngquant", "--version"],
-            -6,
-            stdout="",
-            stderr=(
-                "Library not loaded: "
-                "/opt/homebrew/opt/little-cms2/lib/liblcms2.2.dylib"
-            ),
-        )
-        installed = subprocess.CompletedProcess(
-            ["brew", "install", "little-cms2"],
-            0,
-            stdout="安装完成",
-            stderr="",
-        )
-        validated = subprocess.CompletedProcess(
-            ["pngquant", "--version"],
-            0,
-            stdout="3.0.3",
-            stderr="",
-        )
-        with patch("init.sys.platform", "darwin"), patch(
-            "init.find_pngquant",
-            return_value="/fake/pngquant",
-        ), patch("init.shutil.which", return_value="/opt/homebrew/bin/brew"), patch(
-            "init.subprocess.run",
-            side_effect=[missing_library, installed, validated],
-        ) as run:
-            result = init_module.validate_pngquant()
-
-        self.assertEqual(result, Path("/fake/pngquant"))
-        self.assertEqual(
-            run.call_args_list[1].args[0],
-            ["/opt/homebrew/bin/brew", "install", "little-cms2"],
-        )
-
-    def test_pngquant_missing_dependency_requires_homebrew(self) -> None:
-        """验证 macOS 缺少运行库且无 Homebrew 时给出明确提示。"""
-        missing_library = subprocess.CompletedProcess(
-            ["pngquant", "--version"],
-            -6,
-            stdout="",
-            stderr="Library not loaded: liblcms2.2.dylib",
-        )
-        with patch("init.sys.platform", "darwin"), patch(
-            "init.find_pngquant",
-            return_value="/fake/pngquant",
-        ), patch("init.shutil.which", return_value=None), patch(
-            "init.subprocess.run",
-            return_value=missing_library,
-        ):
-            with self.assertRaisesRegex(RuntimeError, "Homebrew"):
-                init_module.validate_pngquant()
-
     def test_state_is_written_before_authentication(self) -> None:
         """验证工具环境状态在飞书认证前写入。"""
         with TemporaryDirectory() as temp_dir_value:

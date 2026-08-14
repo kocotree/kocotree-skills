@@ -24,11 +24,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--output", default="", help="最终输出根目录")
     parser.add_argument("--product-code", default="", help="产品货号；目录可可靠识别时可省略")
     parser.add_argument("--product-name", default="", help="产品名称；用于同货号候选复核")
-    parser.add_argument("--material-plan", default="", help=argparse.SUPPRESS)
-    parser.add_argument("--detail-plan", default="", help=argparse.SUPPRESS)
-    parser.add_argument("--size-table-source", default="", help=argparse.SUPPRESS)
-    parser.add_argument("--size-table-box", default="", help=argparse.SUPPRESS)
-    parser.add_argument("--visual-review-approved", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--context", default="", help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
 

@@ -57,19 +57,6 @@ def resolve_sku_root(source_root: Path) -> Path:
     return standard
 
 
-def scan_source_pack(source_root: Path) -> dict:
-    found: dict[str, dict] = {}
-    missing: list[str] = []
-    for name, rel in 源目录规则.items():
-        path = resolve_source_path(source_root, name)
-        images = list_images(path, recursive=(name == "素材图"))
-        if path.exists():
-            found[name] = {"目录": str(path), "图片数量": len(images)}
-        else:
-            missing.append(str(rel))
-    return {"识别目录": found, "缺失目录": missing}
-
-
 def get_image_group(source_root: Path, key: str, recursive: bool = False) -> list[Path]:
     return list_images(resolve_source_path(source_root, key), recursive=recursive)
 

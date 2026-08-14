@@ -9,11 +9,14 @@ from unittest.mock import patch
 
 import xlwt
 from openpyxl import Workbook
+from PIL import Image
 
+from common.color_naming import resolve_color_names
 from common.font_assets import load_font_assets, require_glyphs
 from common.nas_paths import require_accessible_directory, to_unc_path
 from common.product_info_reader import (
     extract_chinese_material,
+    extract_representative_color,
     find_product_info,
     read_product_records,
 )
@@ -23,7 +26,6 @@ from common.product_matcher import (
     select_bartender_file,
 )
 from common.settings import resolve_business_paths
-from common.source_normalizer import create_local_copy, detect_source_kind
 from common.utils import build_platform_directory_names, 平台模板目录名
 
 
@@ -83,6 +85,45 @@ class BusinessSettingsTests(unittest.TestCase):
         self.assertTrue((template_root / 平台模板目录名["jd"]).is_dir())
         self.assertFalse((template_root / "京东").exists())
 
+    def test_white_and_transparent_images_use_sku_color_names(self) -> None:
+        """验证数字素材通过视觉映射使用 SKU 颜色名称。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            for relative in (
+                "SKU/800/豆蔻紫.jpg",
+                "SKU/800/远海蓝.jpg",
+                "白底图/1.jpg",
+                "白底图/2.jpg",
+                "透明图/1.png",
+                "透明图/2.png",
+            ):
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                Image.new("RGBA" if path.suffix == ".png" else "RGB", (8, 8), "white").save(path)
+
+            names = resolve_color_names(
+                root,
+                {
+                    "白底图/1.jpg": "豆蔻紫",
+                    "白底图/2.jpg": "远海蓝",
+                    "透明图/1.png": "豆蔻紫",
+                    "透明图/2.png": "远海蓝",
+                },
+            )
+
+            self.assertEqual(names[(root / "白底图/1.jpg").resolve()], "豆蔻紫")
+            self.assertEqual(names[(root / "透明图/2.png").resolve()], "远海蓝")
+
+    def test_offsite_template_uses_business_folder_names(self) -> None:
+        """验证站外模板只包含最终业务目录名称。"""
+        template_root = Path(__file__).resolve().parents[2] / "template" / "站外通用版"
+        actual = {path.name for path in template_root.iterdir() if path.is_dir()}
+
+        self.assertEqual(
+            actual,
+            {"详情页", "sku", "白底图", "白底图＋logo", "透明图", "主图", "素材图"},
+        )
+
 
 class ProductInfoTests(unittest.TestCase):
     """验证三种 Excel 格式读取和产品唯一匹配。"""
@@ -104,6 +145,19 @@ class ProductInfoTests(unittest.TestCase):
         values = [
             ["产品货号", "产品名称", "中文面料", "颜色", "尺码"],
             ["KQ25143", "儿童外套", "聚酯纤维 100%", "红色", "110"],
+        ]
+        for row_index, row in enumerate(values):
+            for column_index, value in enumerate(row):
+                sheet.write(row_index, column_index, value)
+        workbook.save(str(path))
+
+    @staticmethod
+    def _write_specification_xls(path: Path) -> None:
+        workbook = xlwt.Workbook()
+        sheet = workbook.add_sheet("产品资料")
+        values = [
+            ["货号", "品名", "规格", "尺码", "成分"],
+            ["KQ26169", "小云暖抓绒马甲（按扣款）", "星夜蓝100", "100/48", "100%聚酯纤维"],
         ]
         for row_index, row in enumerate(values):
             for column_index, value in enumerate(row):
@@ -145,9 +199,21 @@ class ProductInfoTests(unittest.TestCase):
 
         self.assertEqual(extract_chinese_material(value), "成分：98.3%聚酯纤维\n1.7%氨纶")
 
+    def test_specification_and_size_remain_separate(self) -> None:
+        """验证真实产品表中的规格与尺码分别保留。"""
+        with TemporaryDirectory() as temp_dir_value:
+            path = Path(temp_dir_value) / "KQ26169.xls"
+            self._write_specification_xls(path)
+
+            record = read_product_records(path)[0]
+
+        self.assertEqual(record.get("规格"), "星夜蓝100")
+        self.assertEqual(record.get("尺码"), "100/48")
+        self.assertEqual(extract_representative_color(record), "星夜蓝")
+
 
 class ProductMatcherTests(unittest.TestCase):
-    """验证货号识别、边界和 BarTender 代表尺码选择。"""
+    """验证货号识别和 BarTender 产品目录、颜色、尺码选择。"""
 
     def test_product_code_requires_exact_boundary(self) -> None:
         """验证相邻的更长货号不会被当作精确匹配。"""
@@ -162,47 +228,47 @@ class ProductMatcherTests(unittest.TestCase):
         """验证优先 110 码且缺少时选择最小尺码。"""
         with TemporaryDirectory() as temp_dir_value:
             root = Path(temp_dir_value)
-            for name in ("KQ26143-蓝色-100.btw", "KQ26143-蓝色-110.btw"):
-                (root / name).write_bytes(b"btw")
-            preferred = select_bartender_file(root, "KQ26143")
-            (root / "KQ26143-蓝色-110.btw").unlink()
-            fallback = select_bartender_file(root, "KQ26143")
+            product = root / "儿童长裤"
+            product.mkdir()
+            for name in ("儿童长裤 蓝色100.btw", "儿童长裤 蓝色110.btw"):
+                (product / name).write_bytes(b"btw")
+            preferred = select_bartender_file(root, "儿童长裤", "蓝色")
+            (product / "儿童长裤 蓝色110.btw").unlink()
+            fallback = select_bartender_file(root, "儿童长裤", "蓝色")
 
-        self.assertEqual(preferred.selected.name, "KQ26143-蓝色-110.btw")
-        self.assertEqual(fallback.selected.name, "KQ26143-蓝色-100.btw")
+        self.assertEqual(preferred.selected.name, "儿童长裤 蓝色110.btw")
+        self.assertEqual(fallback.selected.name, "儿童长裤 蓝色100.btw")
         self.assertIn("最小尺码 100", fallback.reason)
 
-    def test_bartender_product_name_mismatch_is_blocked(self) -> None:
-        """验证 BarTender 货号候选与产品名称不一致时停止选择。"""
+    def test_only_top_level_bartender_file_is_selected(self) -> None:
+        """验证默认匹配不进入特殊版本子目录。"""
         with TemporaryDirectory() as temp_dir_value:
             root = Path(temp_dir_value)
-            (root / "KQ26143-儿童长裤-110.btw").write_bytes(b"btw")
+            product = root / "儿童长裤"
+            special = product / "委托商版"
+            special.mkdir(parents=True)
+            (product / "儿童长裤 蓝色110.btw").write_bytes(b"standard")
+            (special / "儿童长裤 蓝色110.btw").write_bytes(b"special")
 
-            result = select_bartender_file(root, "KQ26143", "儿童外套")
+            result = select_bartender_file(root, "儿童长裤", "蓝色")
 
-            self.assertIsNone(result.selected)
-            self.assertIn("名称不一致", result.reason)
+            self.assertEqual(result.selected, product / "儿童长裤 蓝色110.btw")
+            self.assertEqual(len(result.candidates), 1)
 
-
-class SourceAndFontTests(unittest.TestCase):
-    """验证工作副本隔离和 Skill 字体资产。"""
-
-    def test_source_copy_preserves_original(self) -> None:
-        """验证产品数据包始终在本地副本中处理。"""
+    def test_missing_product_name_directory_is_blocked(self) -> None:
+        """验证正式产品名称没有对应一级目录时停止选择。"""
         with TemporaryDirectory() as temp_dir_value:
             root = Path(temp_dir_value)
-            product = root / "产品A"
-            data_pack = product / "数据包"
-            data_pack.mkdir(parents=True)
-            (data_pack / "源文件.txt").write_text("原始", encoding="utf-8")
-            self.assertEqual(detect_source_kind(product), "product")
+            (root / "儿童长裤").mkdir()
 
-            copied = create_local_copy(product, root / "工作区")
-            (copied.working_copy / "数据包" / "源文件.txt").write_text(
-                "副本",
-                encoding="utf-8",
-            )
-            self.assertEqual((data_pack / "源文件.txt").read_text(encoding="utf-8"), "原始")
+            result = select_bartender_file(root, "儿童外套", "蓝色")
+
+        self.assertIsNone(result.selected)
+        self.assertIn("合格证目录", result.reason)
+
+
+class FontAssetTests(unittest.TestCase):
+    """验证 Skill 字体资产。"""
 
     def test_all_font_assets_load_and_cover_roles(self) -> None:
         """验证四个字体文件的内部名称和必需字形。"""

@@ -127,7 +127,7 @@ def process_vip_transparent_image(
             source,
             platform,
             usage,
-            [f"提取800透明图主体", f"等比例缩放到{target_edge}x{target_edge}工作图", "按产品透明边裁切", "主体额外放大10px，最终画布保持一边1200"],
+            ["提取800透明图主体", f"等比例缩放到{target_edge}x{target_edge}工作图", "按产品透明边裁切", "主体额外放大10px，最终画布保持一边1200"],
         )
     except Exception as exc:
         add_failure(report, "process_vip_transparent_image失败", 源文件=str(source), 输出文件=str(output), 错误=str(exc))
