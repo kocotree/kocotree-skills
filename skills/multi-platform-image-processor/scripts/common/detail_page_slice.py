@@ -28,7 +28,6 @@ logger = logging.getLogger(__name__)
     "店铺": 7,
     "其他": 7,
 }
-必需详情模块 = ("品牌背书", "KV", "图标说明", "产品信息", "尺码表", "尺码快选")
 
 
 def collect_detail_sources(source_root: Path) -> list[Path]:
@@ -134,6 +133,7 @@ def prepare_ordered_detail_sources(
 
     source_paths = collect_detail_sources(source_root)
     source_lookup = {path.resolve(): path for path in source_paths}
+    source_order = {path.resolve(): index for index, path in enumerate(source_paths)}
     parsed: list[dict] = []
     represented: dict[Path, list[tuple[int, int, int, int] | None]] = {}
     for index, item in enumerate(modules):
@@ -150,7 +150,16 @@ def prepare_ordered_detail_sources(
             raise RuntimeError(f"详情模块图片不在已验证的详情页源图中：{image_value}")
         box = _parse_module_box(item.get("区域"), source)
         represented.setdefault(source.resolve(), []).append(box)
-        parsed.append({"类型": module_type, "源图": source, "区域": box, "原顺序": index})
+        parsed.append(
+            {
+                "类型": module_type,
+                "源图": source,
+                "区域": box,
+                "源顺序": source_order[source.resolve()],
+                "区域顺序": box[1] if box is not None else 0,
+                "计划顺序": index,
+            }
+        )
 
     missing_sources = [str(path) for path in source_paths if path.resolve() not in represented]
     if missing_sources:
@@ -158,12 +167,15 @@ def prepare_ordered_detail_sources(
     for source in source_paths:
         _validate_source_coverage(source, represented[source.resolve()])
 
-    present_types = {item["类型"] for item in parsed}
-    missing_types = [name for name in 必需详情模块 if name not in present_types]
-    if missing_types:
-        raise RuntimeError(f"详情页缺少必需模块：{missing_types}")
-
-    ordered = sorted(parsed, key=lambda item: (详情模块顺序[item["类型"]], item["原顺序"]))
+    ordered = sorted(
+        parsed,
+        key=lambda item: (
+            详情模块顺序[item["类型"]],
+            item["源顺序"],
+            item["区域顺序"],
+            item["计划顺序"],
+        ),
+    )
     overrides = {
         source.resolve(): replacement
         for source, replacement in (source_overrides or {}).items()
