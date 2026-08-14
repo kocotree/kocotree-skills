@@ -20,7 +20,12 @@ from common.material_editor import (
     verify_non_target_unchanged,
     wrap_mixed_text,
 )
-from common.size_table_extractor import CropBox, compose_size_image, extract_size_table
+from common.size_table_extractor import (
+    CropBox,
+    compose_size_image,
+    extract_size_table,
+    extract_size_unit,
+)
 
 
 class BarTenderExporterTests(unittest.TestCase):
@@ -147,8 +152,8 @@ class BusinessImageComposerTests(unittest.TestCase):
                 self.assertEqual(image.size, (750, 1600))
             self.assertLessEqual(output.stat().st_size, 500 * 1024)
 
-    def test_size_table_crop_and_size_image_are_complete(self) -> None:
-        """验证显式裁切保留表格底边并生成 800×800 尺码图。"""
+    def test_size_table_crop_and_size_image_include_source_unit(self) -> None:
+        """验证尺码表保留底边，并在成品右上角显示源图单位。"""
         with TemporaryDirectory() as temp_dir_value:
             root = Path(temp_dir_value)
             source = root / "detail.png"
@@ -159,17 +164,33 @@ class BusinessImageComposerTests(unittest.TestCase):
             for x in (100, 300, 500, 700, 900):
                 for y in range(300, 701):
                     detail.putpixel((x, y), (0, 0, 0))
+            for x in range(800, 901):
+                for y in range(220, 261):
+                    detail.putpixel((x, y), (220, 20, 20))
             detail.save(source)
             table = extract_size_table(source, root / "table.png", CropBox(100, 300, 901, 701))
+            unit = extract_size_unit(source, root / "unit.png", CropBox(800, 220, 901, 261))
             with Image.open(table) as image:
                 self.assertEqual(image.size, (801, 401))
                 self.assertEqual(image.getpixel((0, 400)), (0, 0, 0))
 
             certificate = root / "certificate.png"
             self._make_certificate(certificate)
-            result = compose_size_image(certificate, table, root / "尺码图" / "尺码图.jpg")
+            result = compose_size_image(certificate, table, unit, root / "尺码图" / "尺码图.jpg")
             with Image.open(result) as image:
                 self.assertEqual(image.size, (800, 800))
+                unit_area = image.crop((620, 240, 790, 380)).convert("RGB")
+                pixels = (
+                    unit_area.getpixel((x, y))
+                    for y in range(unit_area.height)
+                    for x in range(unit_area.width)
+                )
+                red_pixels = sum(
+                    1
+                    for red, green, blue in pixels
+                    if red > 150 and red > green * 2 and red > blue * 2
+                )
+                self.assertGreater(red_pixels, 100)
             self.assertLessEqual(result.stat().st_size, 500 * 1024)
 
 

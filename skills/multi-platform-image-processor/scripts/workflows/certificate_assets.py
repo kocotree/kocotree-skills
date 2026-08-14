@@ -11,7 +11,12 @@ from common.delivery_quality_audit import audit_business_images
 from common.font_assets import load_font_assets
 from common.product_matcher import extract_size, select_bartender_file
 from common.settings import skill_root
-from common.size_table_extractor import CropBox, compose_size_image, extract_size_table
+from common.size_table_extractor import (
+    CropBox,
+    compose_size_image,
+    extract_size_table,
+    extract_size_unit,
+)
 from common.utils import add_report_item
 
 from .business_support import parse_box, parse_point
@@ -65,13 +70,14 @@ def generate_business_images(
     report["BarTender导出"]["代表尺码"] = extract_size(selected.stem)
     size_source_value = str(context.get("尺码表图片", "")).strip()
     size_box_value = context.get("尺码表区域")
-    if not size_source_value or not size_box_value:
-        add_report_item(report, "失败项", "缺少实际尺码表来源或完整裁切坐标")
+    size_unit_box_value = context.get("尺码单位区域")
+    if not size_source_value or not size_box_value or not size_unit_box_value:
+        add_report_item(report, "失败项", "缺少实际尺码表、尺码单位来源或完整裁切坐标")
         report["Agent复核建议"].append(
             {
                 "任务名称": "选择实际尺码表",
                 "图片路径": [str(content_root)],
-                "原因": "需要排除尺码快选和试穿表，并确认标题、灰框和完整底行边界",
+                "原因": "需要排除尺码快选和试穿表，并确认单位、标题、灰框和完整底行边界",
             }
         )
         return False
@@ -97,11 +103,13 @@ def generate_business_images(
         add_report_item(report, "失败项", "尺码表详情图不存在", 文件=str(size_source))
         return False
     size_box = CropBox(*parse_box(size_box_value, "尺码表区域"))
+    size_unit_box = CropBox(*parse_box(size_unit_box_value, "尺码单位区域"))
     with tempfile.TemporaryDirectory(prefix="kocotree-certificate-") as temp_dir_value:
         temp_dir = Path(temp_dir_value)
         exported = export_bartender_image(selected, temp_dir / "bartender-export.png")
         report["BarTender导出"]["源文件保护"] = "通过"
         table = extract_size_table(size_source, temp_dir / "size-table.png", size_box)
+        size_unit = extract_size_unit(size_source, temp_dir / "size-unit.png", size_unit_box)
         try:
             certificate_path = compose_certificate(
                 exported,
@@ -126,9 +134,15 @@ def generate_business_images(
             size_path = compose_size_image(
                 exported,
                 table,
+                size_unit,
                 product_root / "蜂享家＋爱库存" / "尺码图" / "尺码图.jpg",
             )
-            report["业务图片"]["尺码图"] = {"状态": "成功", "路径": str(size_path)}
+            report["业务图片"]["尺码图"] = {
+                "状态": "成功",
+                "路径": str(size_path),
+                "尺码单位来源": str(size_source),
+                "尺码单位区域": list(size_unit_box.as_tuple()),
+            }
         except Exception as exc:
             add_report_item(report, "失败项", "业务图片合成失败", 错误=str(exc))
             return False
@@ -140,7 +154,7 @@ def generate_business_images(
                 item["路径"] for item in report["业务图片"].values()
                 if isinstance(item, dict) and item.get("路径")
             ],
-            "原因": "确认尺码表完整清晰、三张业务图片排版正常且非目标内容未受影响",
+            "原因": "确认尺码表和右上角单位完整清晰、三张业务图片排版正常且非目标内容未受影响",
         }
     )
     return passed
