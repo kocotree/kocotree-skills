@@ -5,6 +5,9 @@ from pathlib import Path
 from .utils import list_images
 
 
+SKU赠品分支 = {"加赠品", "无赠品"}
+
+
 源目录规则 = {
     "主图800": Path("主图") / "800",
     "主图1440": Path("主图") / "1440",
@@ -57,6 +60,26 @@ def resolve_sku_root(source_root: Path) -> Path:
     return standard
 
 
+def has_gift_sku_branches(source_root: Path) -> bool:
+    """判断 SKU 是否采用赠品分支结构。
+
+    功能说明：检查 SKU 根目录的直接子目录是否包含“加赠品”或“无赠品”。
+    参数：
+        source_root：产品素材根目录。
+    返回值：
+        存在赠品分支时返回 True，否则返回 False。
+    """
+    sku_root = resolve_sku_root(source_root)
+    if not sku_root.is_dir():
+        return False
+    branch_names = {
+        child.name.replace(" ", "")
+        for child in sku_root.iterdir()
+        if child.is_dir()
+    }
+    return bool(branch_names.intersection(SKU赠品分支))
+
+
 def get_image_group(source_root: Path, key: str, recursive: bool = False) -> list[Path]:
     return list_images(resolve_source_path(source_root, key), recursive=recursive)
 
@@ -69,10 +92,28 @@ def get_sku800(source_root: Path) -> list[Path]:
 
 
 def get_sku800_recursive(source_root: Path) -> list[Path]:
-    explicit = get_image_group(source_root, "SKU800", recursive=True)
-    if explicit:
-        return explicit
-    return get_image_group(source_root, "SKU", recursive=True)
+    """递归读取 SKU 树中的 800 图。
+
+    功能说明：识别任意层级的 `800` 或 `800x800` 尺寸目录；没有尺寸目录时使用 SKU 根目录图片。
+    参数：
+        source_root：产品素材根目录。
+    返回值：
+        SKU 800 图片列表。
+    """
+    sku_root = resolve_sku_root(source_root)
+    sources = list_images(sku_root, recursive=True)
+    sized = []
+    for source in sources:
+        relative = source.relative_to(sku_root)
+        normalized_parts = {
+            part.casefold().replace("×", "x").replace(" ", "")
+            for part in relative.parent.parts
+        }
+        if normalized_parts.intersection({"800", "800x800"}):
+            sized.append(source)
+    if sized:
+        return sized
+    return [source for source in sources if source.parent == sku_root]
 
 
 def get_sku1440(source_root: Path) -> list[Path]:

@@ -63,6 +63,18 @@ class SkuCardCropTests(unittest.TestCase):
         self.assertEqual(plan.image_size, image.size)
         self.assertTrue(plan.label_boxes)
 
+    def test_detect_plan_includes_low_card_label(self) -> None:
+        """验证靠近画布底部的颜色标签仍会进入可编辑区域。"""
+        image = Image.new("RGB", (800, 800), (238, 238, 238))
+        draw = ImageDraw.Draw(image)
+        draw.rounded_rectangle((510, 220, 770, 780), radius=14, fill=(255, 255, 255))
+        draw.rounded_rectangle((510, 690, 770, 770), radius=12, fill=(210, 55, 45))
+        draw.rectangle((580, 715, 700, 745), fill=(255, 255, 255))
+
+        plan = detect_right_card_plan(image)
+
+        self.assertTrue(any(top >= 680 for _, top, _, _ in plan.label_boxes))
+
     def test_model_input_keeps_original_dimensions(self) -> None:
         image = create_sample_sku()
         plan = detect_right_card_plan(image)

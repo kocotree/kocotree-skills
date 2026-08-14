@@ -6,7 +6,7 @@ from common import ensure_dir, add_review_suggestion, list_images
 from common.color_naming import color_output_name
 from common.detail_page_slice import merge_long_detail_slices
 from common.image_resize_compress import process_jpg_original_or_compress
-from common.scan_source_pack import get_image_group, get_sku800
+from common.scan_source_pack import get_image_group, get_sku800_recursive, resolve_sku_root
 
 
 平台 = "蜂享家＋爱库存"
@@ -33,7 +33,7 @@ def derive(
     """
     platform_dir = ensure_dir(output_root / 平台)
     _batch_jpg(get_image_group(source_root, "主图800"), platform_dir / "800主图", "800主图", report)
-    _batch_jpg(get_sku800(source_root), platform_dir / "800sku", "800sku", report)
+    _copy_sku800_tree(source_root, platform_dir / "800sku", report)
     _batch_color_jpg(
         get_image_group(source_root, "白底图"),
         platform_dir / "800白底图",
@@ -66,6 +66,28 @@ def _batch_jpg(sources: list[Path], output_dir: Path, usage: str, report: dict) 
     ensure_dir(output_dir)
     for source in sources:
         process_jpg_original_or_compress(source, output_dir / f"{source.stem}.jpg", 500 * 1024, report, 平台, usage)
+
+
+def _copy_sku800_tree(source_root: Path, output_dir: Path, report: dict) -> None:
+    """复制 SKU 800 图并保留赠品分支。
+
+    功能说明：标准 `SKU/800` 直接输出图片；嵌套赠品结构保留其相对目录。
+    参数：
+        source_root：产品素材根目录。
+        output_dir：蜂享家与爱库存的 800 SKU 输出目录。
+        report：完整处理报告。
+    返回值：
+        无。
+    """
+    sku_root = resolve_sku_root(source_root)
+    ensure_dir(output_dir)
+    for source in get_sku800_recursive(source_root):
+        relative = source.relative_to(sku_root)
+        if len(relative.parts) == 2 and relative.parts[0].casefold() == "800":
+            relative = Path(relative.name)
+        output = output_dir / relative.with_suffix(".jpg")
+        ensure_dir(output.parent)
+        process_jpg_original_or_compress(source, output, 500 * 1024, report, 平台, "800sku")
 
 
 def _batch_color_jpg(

@@ -274,7 +274,7 @@ def _detect_colored_label_boxes(
     card_width = card_right - card_left
     active_rows = []
     colored_by_row: dict[int, list[int]] = {}
-    for y in range(round(height * 0.20), round(height * 0.85)):
+    for y in range(round(height * 0.20), round(height * 0.97)):
         colored_x = []
         for x in range(card_left, card_right):
             red, green, blue = image.getpixel((x, y))
@@ -285,7 +285,7 @@ def _detect_colored_label_boxes(
             colored_by_row[y] = colored_x
 
     boxes = []
-    for top, bottom_inclusive in _group_contiguous_values(active_rows, max_gap=2):
+    for top, bottom_inclusive in _group_contiguous_values(active_rows, max_gap=8):
         bottom = bottom_inclusive + 1
         if bottom - top < max(12, round(height * 0.02)):
             continue

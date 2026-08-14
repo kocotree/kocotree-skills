@@ -13,7 +13,7 @@ from common import (
     全部平台,
     平台模板目录名,
 )
-from common.quality_audit import run_quality_audit
+from common.quality_audit import audit_gift_sku_outputs, run_quality_audit
 from common.color_naming import resolve_color_names
 from platforms.cbme import derive as derive_cbme
 from platforms.fengxiang_aikucun import derive as derive_fengxiang_aikucun
@@ -120,6 +120,7 @@ def run_platform_processing(
     derive_offsite(source, template, output, report, color_names)
 
     run_quality_audit(report, platform_directories)
+    audit_gift_sku_outputs(source, platform_directories, report)
     for key in 全部平台:
         add_platform_result(report, directory_names[key], platform_directories[key])
     exit_code = 0 if not report["失败项"] else 1

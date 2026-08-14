@@ -252,8 +252,22 @@ class ProductMatcherTests(unittest.TestCase):
 
             result = select_bartender_file(root, "儿童长裤", "蓝色")
 
-            self.assertEqual(result.selected, product / "儿童长裤 蓝色110.btw")
-            self.assertEqual(len(result.candidates), 1)
+        self.assertEqual(result.selected, product / "儿童长裤 蓝色110.btw")
+        self.assertEqual(len(result.candidates), 1)
+
+    def test_unique_alpha_size_bartender_file_is_selected(self) -> None:
+        """验证唯一颜色候选使用字母尺码时仍可安全选择。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            product = root / "儿童帽子"
+            product.mkdir()
+            expected = product / "儿童帽子 深灰XS.btw"
+            expected.write_bytes(b"btw")
+
+            result = select_bartender_file(root, "儿童帽子", "深灰XS")
+
+        self.assertEqual(result.selected, expected)
+        self.assertIn("唯一文件", result.reason)
 
     def test_missing_product_name_directory_is_blocked(self) -> None:
         """验证正式产品名称没有对应一级目录时停止选择。"""

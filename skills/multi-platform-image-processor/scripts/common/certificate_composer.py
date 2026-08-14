@@ -25,6 +25,58 @@ _DEALER_ADDRESS_GAP = 30
 _CERTIFICATE_CONTENT_MAXIMUM = (650, 1250)
 
 
+def _prepare_fabric_layout(
+    subject: Image.Image,
+    text: str,
+    anchor: tuple[int, int],
+    fonts: dict[str, FontAsset],
+    font_size: int,
+) -> tuple[list[str], int]:
+    """计算合格证面料在指定锚点的排版。
+
+    功能说明：按可用宽高对面料换行，并确认完整文字位于合格证主体内。
+    参数：
+        subject：裁去外围白边后的合格证主体。
+        text：准备写入的面料文字。
+        anchor：文字左上角坐标。
+        fonts：混合字体角色映射。
+        font_size：面料字号。
+    返回值：
+        换行结果和单行高度。
+    """
+    if anchor[0] < 0 or anchor[1] < 0:
+        raise RuntimeError("合格证面料锚点不能为负数")
+    maximum_width = subject.width - anchor[0] - 12
+    if maximum_width <= font_size * 2:
+        raise RuntimeError("合格证面料锚点右侧空间不足")
+    lines = wrap_mixed_text(text, fonts, font_size, maximum_width)
+    line_height = mixed_line_height(text, fonts, font_size, 8)
+    if anchor[1] + line_height * len(lines) > subject.height:
+        raise RuntimeError("合格证面料文字超出主体底部")
+    return lines, line_height
+
+
+def _draw_fabric_text(
+    subject: Image.Image,
+    lines: list[str],
+    anchor: tuple[int, int],
+    fonts: dict[str, FontAsset],
+    font_size: int,
+    line_height: int,
+) -> None:
+    """按已确认布局绘制合格证面料文字。"""
+    style = TextStyle(font_size, (20, 20, 20), 8)
+    for line_index, line in enumerate(lines):
+        if line:
+            draw_mixed_text(
+                subject,
+                (anchor[0], anchor[1] + line_index * line_height),
+                line,
+                fonts,
+                style,
+            )
+
+
 def trim_white(image: Image.Image, threshold: int = 250) -> Image.Image:
     """裁掉图片外围接近纯白的空白区域。"""
     rgb = image.convert("RGB")
@@ -76,6 +128,7 @@ def compose_certificate(
     dealer_address_image: Path,
     fabric_text: str = "",
     fabric_anchor: tuple[int, int] | None = None,
+    fallback_fabric_anchor: tuple[int, int] | None = None,
     fabric_fonts: dict[str, FontAsset] | None = None,
     font_size: int = 34,
 ) -> Path:
@@ -87,6 +140,7 @@ def compose_certificate(
         dealer_address_image：固定经销商与地址图片。
         fabric_text：可选的中文面料原文。
         fabric_anchor：面料在导出图坐标中的左上锚点。
+        fallback_fabric_anchor：等级下方无法容纳时，价格下方的备用左上锚点。
         fabric_fonts：合格证面料使用的字体角色映射。
         font_size：面料字号。
     返回值：
@@ -103,23 +157,39 @@ def compose_certificate(
             normalize_parentheses(fabric_text.strip()),
         )
         text = f"面料：{payload}"
-        maximum_width = subject.width - fabric_anchor[0] - 12
-        if maximum_width <= font_size * 2:
-            raise RuntimeError("合格证面料锚点右侧空间不足")
-        lines = wrap_mixed_text(text, fabric_fonts, font_size, maximum_width)
-        line_height = mixed_line_height(text, fabric_fonts, font_size, 8)
-        if fabric_anchor[1] + line_height * len(lines) > subject.height:
-            raise RuntimeError("合格证面料文字超出主体底部")
-        style = TextStyle(font_size, (20, 20, 20), 8)
-        for line_index, line in enumerate(lines):
-            if line:
-                draw_mixed_text(
-                    subject,
-                    (fabric_anchor[0], fabric_anchor[1] + line_index * line_height),
-                    line,
-                    fabric_fonts,
-                    style,
-                )
+        used_anchor = fabric_anchor
+        try:
+            lines, line_height = _prepare_fabric_layout(
+                subject,
+                text,
+                used_anchor,
+                fabric_fonts,
+                font_size,
+            )
+        except RuntimeError as primary_error:
+            if fallback_fabric_anchor is None:
+                raise
+            used_anchor = fallback_fabric_anchor
+            lines, line_height = _prepare_fabric_layout(
+                subject,
+                text,
+                used_anchor,
+                fabric_fonts,
+                font_size,
+            )
+            logger.warning(
+                "合格证等级下方无法容纳面料，使用价格下方布局 reason=%s anchor=%s",
+                primary_error,
+                used_anchor,
+            )
+        _draw_fabric_text(
+            subject,
+            lines,
+            used_anchor,
+            fabric_fonts,
+            font_size,
+            line_height,
+        )
     if not dealer_address_image.is_file():
         raise RuntimeError(f"合格证经销商地址图片不存在：{dealer_address_image}")
     with Image.open(dealer_address_image) as opened:
