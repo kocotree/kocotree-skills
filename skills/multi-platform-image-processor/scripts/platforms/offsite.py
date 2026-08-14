@@ -4,11 +4,11 @@ from concurrent.futures import ThreadPoolExecutor
 import logging
 from pathlib import Path
 
-from common import add_review_suggestion, ensure_dir
+from common import add_failure, add_review_suggestion, ensure_dir
 from common.color_naming import color_output_name
 from common.image_resize_compress import process_jpg_original_or_compress, process_png_original_or_compress
 from common.logo_overlay import find_logo, overlay_logo
-from common.scan_source_pack import get_image_group, get_sku800_recursive, resolve_source_path
+from common.scan_source_pack import get_image_group, get_sku800_recursive, has_gift_sku_branches, resolve_source_path
 from common.text_removal import ensure_text2image_ready, get_text_removal_temp_dir, process_offsite_sku_text_removal, prune_temp_images
 
 
@@ -28,15 +28,18 @@ def _select_offsite_sku_sources(source_root: Path) -> list[Path]:
     """
     sources = get_sku800_recursive(source_root)
     sku_base = resolve_source_path(source_root, "SKU")
+    gift_mode = has_gift_sku_branches(source_root)
     no_gift_sources: list[Path] = []
     for source in sources:
         try:
             directory_parts = source.relative_to(sku_base).parent.parts
         except ValueError:
             directory_parts = source.parent.parts
-        if any("无赠品" in part.replace(" ", "") for part in directory_parts):
+        if any(part.replace(" ", "") == "无赠品" for part in directory_parts):
             no_gift_sources.append(source)
-    if not no_gift_sources:
+    if gift_mode and not no_gift_sources:
+        raise RuntimeError("赠品 SKU 结构缺少无赠品分支的 800 图")
+    if not gift_mode:
         logger.info("站外SKU使用全部800图 count=%d", len(sources))
         return sources
     logger.info(
@@ -69,11 +72,15 @@ def derive(
     platform_dir = ensure_dir(output_root / 平台)
     sku_outputs = []
     sku_dir = ensure_dir(platform_dir / "sku")
-    sku_sources = _select_offsite_sku_sources(source_root)
+    try:
+        sku_sources = _select_offsite_sku_sources(source_root)
+    except RuntimeError as exc:
+        add_failure(report, "站外SKU选择失败", 原因=str(exc))
+        logger.error("站外SKU选择失败 error=%r", str(exc))
+        sku_sources = []
     if sku_sources:
         ready, ready_msg = ensure_text2image_ready()
         if not ready:
-            from common import add_failure
             add_failure(report, "text2image 不可用，跳过站外SKU去字", 原因=ready_msg)
             sku_sources = []
     if sku_sources:

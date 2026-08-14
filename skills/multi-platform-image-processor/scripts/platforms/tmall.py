@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -7,10 +8,11 @@ from common import add_failure, add_review_suggestion, ensure_dir
 from common.color_naming import color_output_name
 from common.detail_page_slice import generate_sequential_detail_pages, prepare_ordered_detail_sources
 from common.image_resize_compress import process_jpg_original_or_compress, process_png_original_or_compress
-from common.scan_source_pack import 源目录规则, get_image_group, resolve_sku_root
+from common.scan_source_pack import 源目录规则, get_image_group, has_gift_sku_branches, resolve_sku_root
 
 
 平台 = "天猫通用版"
+logger = logging.getLogger(__name__)
 
 
 def build(
@@ -95,8 +97,16 @@ def _copy_sku_tree(source_root: Path, output_dir: Path, report: dict) -> None:
         无。
     """
     sku_root = resolve_sku_root(source_root)
-    ensure_dir(output_dir / "800")
-    ensure_dir(output_dir / "1440")
+    if has_gift_sku_branches(source_root):
+        for size_name in ("800", "1440"):
+            size_dir = output_dir / size_name
+            if size_dir.is_dir() and not any(size_dir.iterdir()):
+                size_dir.rmdir()
+        logger.info("天猫SKU使用赠品分支结构 root=%r", str(sku_root))
+    else:
+        ensure_dir(output_dir / "800")
+        ensure_dir(output_dir / "1440")
+        logger.info("天猫SKU使用普通尺寸结构 root=%r", str(sku_root))
     for source in get_image_group(source_root, "SKU", recursive=True):
         relative = source.relative_to(sku_root)
         if len(relative.parts) == 1:

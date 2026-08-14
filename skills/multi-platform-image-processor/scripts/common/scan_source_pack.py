@@ -5,6 +5,9 @@ from pathlib import Path
 from .utils import list_images
 
 
+SKU赠品分支 = {"加赠品", "无赠品"}
+
+
 源目录规则 = {
     "主图800": Path("主图") / "800",
     "主图1440": Path("主图") / "1440",
@@ -55,6 +58,26 @@ def resolve_sku_root(source_root: Path) -> Path:
     if len(matches) == 1:
         return matches[0]
     return standard
+
+
+def has_gift_sku_branches(source_root: Path) -> bool:
+    """判断 SKU 是否采用赠品分支结构。
+
+    功能说明：检查 SKU 根目录的直接子目录是否包含“加赠品”或“无赠品”。
+    参数：
+        source_root：产品素材根目录。
+    返回值：
+        存在赠品分支时返回 True，否则返回 False。
+    """
+    sku_root = resolve_sku_root(source_root)
+    if not sku_root.is_dir():
+        return False
+    branch_names = {
+        child.name.replace(" ", "")
+        for child in sku_root.iterdir()
+        if child.is_dir()
+    }
+    return bool(branch_names.intersection(SKU赠品分支))
 
 
 def get_image_group(source_root: Path, key: str, recursive: bool = False) -> list[Path]:

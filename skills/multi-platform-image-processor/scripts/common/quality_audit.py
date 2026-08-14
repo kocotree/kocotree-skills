@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .scan_source_pack import get_sku800_recursive, has_gift_sku_branches, resolve_sku_root
 from .utils import list_images, image_info, add_failure, add_warning, 平台目录名
 
 
@@ -30,6 +31,82 @@ def run_quality_audit(
             _audit_fengxiang(platform_directories[platform], report)
         elif platform == "offsite":
             _audit_offsite(platform_directories[platform], report)
+
+
+def audit_gift_sku_outputs(
+    source_root: Path,
+    platform_directories: dict[str, Path],
+    report: dict,
+) -> None:
+    """核对赠品 SKU 的平台分支和图片数量。
+
+    功能说明：验证天猫完整保留源 SKU 相对路径，蜂享家＋爱库存只保留
+    两个分支的 800 图，并确认站外输出记录全部来自无赠品 800 图。
+    参数：
+        source_root：产品素材根目录。
+        platform_directories：平台键与实际输出目录映射。
+        report：用于记录质检结果的报告。
+    返回值：
+        无返回值。
+    """
+    if not has_gift_sku_branches(source_root):
+        return
+
+    sku_root = resolve_sku_root(source_root)
+    tmall_root = platform_directories["tmall"] / "sku"
+    fengxiang_root = platform_directories["fengxiang-aikucun"] / "800sku"
+    _check_relative_image_set(
+        {path.relative_to(sku_root).with_suffix(".jpg") for path in list_images(sku_root, recursive=True)},
+        tmall_root,
+        "天猫赠品SKU目录与源目录不一致",
+        report,
+    )
+    _check_relative_image_set(
+        {path.relative_to(sku_root).with_suffix(".jpg") for path in get_sku800_recursive(source_root)},
+        fengxiang_root,
+        "蜂享家＋爱库存赠品SKU目录与源目录不一致",
+        report,
+    )
+    for size_name in ("800", "1440"):
+        if (tmall_root / size_name).exists():
+            add_failure(report, "天猫赠品SKU存在多余顶层尺寸目录", 目录=str(tmall_root / size_name))
+
+    invalid_records = []
+    for record in report.get("图片记录", []):
+        if record.get("平台") != "站外通用版" or record.get("用途") != "sku":
+            continue
+        source = Path(record.get("源文件", ""))
+        try:
+            parts = source.relative_to(sku_root).parts
+        except ValueError:
+            parts = source.parts
+        normalized = {
+            part.casefold().replace("×", "x").replace(" ", "")
+            for part in parts
+        }
+        if "无赠品" not in normalized or not normalized.intersection({"800", "800x800"}):
+            invalid_records.append(str(source))
+    if invalid_records:
+        add_failure(report, "站外赠品SKU来源不是无赠品800分支", 源文件=invalid_records)
+
+
+def _check_relative_image_set(
+    expected: set[Path],
+    output_root: Path,
+    message: str,
+    report: dict,
+) -> None:
+    """比较预期与实际图片相对路径集合。"""
+    actual = {path.relative_to(output_root) for path in list_images(output_root, recursive=True)}
+    expected_keys = {path.as_posix().casefold() for path in expected}
+    actual_keys = {path.as_posix().casefold() for path in actual}
+    if expected_keys != actual_keys:
+        add_failure(
+            report,
+            message,
+            缺少=sorted(expected_keys - actual_keys),
+            多余=sorted(actual_keys - expected_keys),
+        )
 
 
 def _check_file_size(path: Path, max_kb: int, report: dict) -> None:

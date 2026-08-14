@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 
 from PIL import Image
 
-from common.detail_page_slice import prepare_ordered_detail_sources
+from common.detail_page_slice import collect_detail_sources, prepare_ordered_detail_sources
 
 
 def create_rgb(path: Path, size: tuple[int, int] = (16, 12)) -> None:
@@ -18,6 +18,17 @@ def create_rgb(path: Path, size: tuple[int, int] = (16, 12)) -> None:
 
 class DetailPageSliceTests(unittest.TestCase):
     """验证详情页模块计划的排序与拆分。"""
+
+    def test_collects_images_directly_under_detail_directory(self) -> None:
+        """验证详情目录平铺图片能够直接参与处理。"""
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "产品"
+            first = root / "详情" / "xq_01.jpg"
+            second = root / "详情" / "xq_02.jpg"
+            create_rgb(first)
+            create_rgb(second)
+
+            self.assertEqual(collect_detail_sources(root), [first, second])
 
     def test_detail_plan_reorders_required_modules_and_splits_joined_image(self) -> None:
         """验证详情计划按固定模块顺序输出并水平拆分连体图。"""

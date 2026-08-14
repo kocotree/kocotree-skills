@@ -33,15 +33,29 @@ logger = logging.getLogger(__name__)
 def collect_detail_sources(source_root: Path) -> list[Path]:
     """按已验证的详情页结构收集源图片。
 
-    功能说明：平铺模式读取静态目录中的直接图片；上/下模式按“上”后
-    “下”的顺序合并图片。混合或不完整结构会直接报错。
+    功能说明：优先读取详情目录中的直接图片；静态平铺模式读取静态目录
+    中的直接图片；上/下模式按“上”后“下”的顺序合并图片。
 
     参数：
         source_root：数据包根目录。
     返回值：
         按详情页展示顺序排列的源图片路径。
     """
-    static = source_root / "详情" / "静态"
+    detail_root = source_root / "详情"
+    root_images = list_images(detail_root)
+    if root_images:
+        logger.info(
+            "详情页源图片收集完成 mode=detail-flat count=%d",
+            len(root_images),
+            extra={
+                "stage": "详情页",
+                "event": "详情源图收集",
+                "status": "success",
+            },
+        )
+        return root_images
+
+    static = detail_root / "静态"
     upper = static / "上"
     lower = static / "下"
     direct_images = list_images(static)
