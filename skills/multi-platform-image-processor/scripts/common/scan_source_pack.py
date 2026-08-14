@@ -69,10 +69,28 @@ def get_sku800(source_root: Path) -> list[Path]:
 
 
 def get_sku800_recursive(source_root: Path) -> list[Path]:
-    explicit = get_image_group(source_root, "SKU800", recursive=True)
-    if explicit:
-        return explicit
-    return get_image_group(source_root, "SKU", recursive=True)
+    """递归读取 SKU 树中的 800 图。
+
+    功能说明：识别任意层级的 `800` 或 `800x800` 尺寸目录；没有尺寸目录时使用 SKU 根目录图片。
+    参数：
+        source_root：产品素材根目录。
+    返回值：
+        SKU 800 图片列表。
+    """
+    sku_root = resolve_sku_root(source_root)
+    sources = list_images(sku_root, recursive=True)
+    sized = []
+    for source in sources:
+        relative = source.relative_to(sku_root)
+        normalized_parts = {
+            part.casefold().replace("×", "x").replace(" ", "")
+            for part in relative.parent.parts
+        }
+        if normalized_parts.intersection({"800", "800x800"}):
+            sized.append(source)
+    if sized:
+        return sized
+    return [source for source in sources if source.parent == sku_root]
 
 
 def get_sku1440(source_root: Path) -> list[Path]:

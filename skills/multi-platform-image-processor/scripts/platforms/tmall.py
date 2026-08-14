@@ -7,7 +7,7 @@ from common import add_failure, add_review_suggestion, ensure_dir
 from common.color_naming import color_output_name
 from common.detail_page_slice import generate_sequential_detail_pages, prepare_ordered_detail_sources
 from common.image_resize_compress import process_jpg_original_or_compress, process_png_original_or_compress
-from common.scan_source_pack import 源目录规则, get_image_group, get_sku800, get_sku1440
+from common.scan_source_pack import 源目录规则, get_image_group, resolve_sku_root
 
 
 平台 = "天猫通用版"
@@ -37,8 +37,7 @@ def build(
 
     _batch_jpg(get_image_group(source_root, "主图800"), platform_dir / "主图" / "800主图", "主图\\800主图", report)
     _batch_jpg(get_image_group(source_root, "主图750"), platform_dir / "主图" / "750 1000主图", "主图\\750 1000主图", report)
-    _batch_jpg(get_sku800(source_root), platform_dir / "sku" / "800", "sku\\800", report)
-    _batch_jpg(get_sku1440(source_root), platform_dir / "sku" / "1440", "sku\\1440", report)
+    _copy_sku_tree(source_root, platform_dir / "sku", report)
     _batch_color_jpg(get_image_group(source_root, "白底图"), platform_dir / "800白底图", "800白底图", report, color_names or {})
     _batch_color_png(get_image_group(source_root, "透明图"), platform_dir / "800透明图", "800透明图", report, color_names or {})
     _copy_material_images(get_image_group(source_root, "素材图", recursive=True), source_root / 源目录规则["素材图"], platform_dir / "素材图", report)
@@ -82,6 +81,29 @@ def _batch_jpg(sources: list[Path], output_dir: Path, usage: str, report: dict) 
     ensure_dir(output_dir)
     for source in sources:
         process_jpg_original_or_compress(source, output_dir / f"{source.stem}.jpg", 500 * 1024, report, 平台, usage)
+
+
+def _copy_sku_tree(source_root: Path, output_dir: Path, report: dict) -> None:
+    """复制完整 SKU 目录并保留赠品分支。
+
+    功能说明：递归处理 SKU 图片并保留相对目录；SKU 根目录图片按 800 图输出。
+    参数：
+        source_root：产品素材根目录。
+        output_dir：天猫 SKU 输出目录。
+        report：完整处理报告。
+    返回值：
+        无。
+    """
+    sku_root = resolve_sku_root(source_root)
+    ensure_dir(output_dir / "800")
+    ensure_dir(output_dir / "1440")
+    for source in get_image_group(source_root, "SKU", recursive=True):
+        relative = source.relative_to(sku_root)
+        if len(relative.parts) == 1:
+            relative = Path("800") / relative
+        output = output_dir / relative.with_suffix(".jpg")
+        ensure_dir(output.parent)
+        process_jpg_original_or_compress(source, output, 500 * 1024, report, 平台, "sku")
 
 
 def _batch_color_jpg(

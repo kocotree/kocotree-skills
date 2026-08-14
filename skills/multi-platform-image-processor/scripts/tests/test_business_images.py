@@ -152,6 +152,30 @@ class BusinessImageComposerTests(unittest.TestCase):
                 self.assertEqual(image.size, (750, 1600))
             self.assertLessEqual(output.stat().st_size, 500 * 1024)
 
+    def test_certificate_uses_price_fallback_when_grade_area_is_too_narrow(self) -> None:
+        """验证等级下方无法容纳时将面料放到价格下方。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            source = root / "export.png"
+            dealer_address = root / "dealer-address.png"
+            self._make_certificate(source)
+            self._make_dealer_address(dealer_address)
+
+            with self.assertLogs("common.certificate_composer", level="WARNING") as captured:
+                output = compose_certificate(
+                    source,
+                    root / "合格证" / "合格证图.jpg",
+                    dealer_address,
+                    fabric_text="面料1：100%聚酯纤维\n面料2：56.2%棉 43.8%聚酯纤维\n里料：100%棉",
+                    fabric_anchor=(640, 80),
+                    fallback_fabric_anchor=(20, 150),
+                    fabric_fonts=load_font_assets(),
+                    font_size=20,
+                )
+
+            self.assertTrue(output.is_file())
+            self.assertTrue(any("使用价格下方布局" in message for message in captured.output))
+
     def test_size_table_crop_and_size_image_include_source_unit(self) -> None:
         """验证尺码表保留底边，并在成品右上角显示源图单位。"""
         with TemporaryDirectory() as temp_dir_value:

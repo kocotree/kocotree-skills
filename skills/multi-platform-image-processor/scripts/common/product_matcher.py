@@ -113,6 +113,12 @@ def select_bartender_file(
     sized = [(path, extract_size(path.stem)) for path in candidates]
     valid = [(path, size) for path, size in sized if size is not None]
     if not valid:
+        if len(candidates) == 1:
+            logger.warning(
+                "BarTender 唯一颜色候选未识别到数字尺码，按唯一候选选择 path=%r",
+                str(candidates[0]),
+            )
+            return MatchResult(candidates[0], candidates, "代表颜色只有一个候选，使用唯一文件")
         return MatchResult(None, candidates, "BarTender 候选中没有可识别尺码")
     target_size = preferred_size if any(size == preferred_size for _, size in valid) else min(
         size for _, size in valid

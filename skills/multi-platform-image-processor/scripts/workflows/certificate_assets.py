@@ -82,6 +82,7 @@ def generate_business_images(
         )
         return False
     fabric_anchor_value = context.get("合格证面料锚点")
+    fallback_fabric_anchor_value = context.get("合格证价格下方面料锚点")
     fabric_font_size = int(context.get("合格证面料字号", 0))
     if not fabric_anchor_value or fabric_font_size <= 0:
         add_report_item(report, "失败项", "缺少合格证等级字段下方面料锚点或字号")
@@ -94,9 +95,16 @@ def generate_business_images(
         )
         return False
     fabric_anchor = parse_point(fabric_anchor_value, "合格证面料锚点")
+    fallback_fabric_anchor = (
+        parse_point(fallback_fabric_anchor_value, "合格证价格下方面料锚点")
+        if fallback_fabric_anchor_value
+        else None
+    )
     fabric_fonts = load_font_assets()
     dealer_address_image = skill_root() / "assets" / "合格证-经销商地址.jpg"
     report["BarTender导出"]["合格证面料锚点"] = list(fabric_anchor)
+    if fallback_fabric_anchor is not None:
+        report["BarTender导出"]["合格证价格下方面料锚点"] = list(fallback_fabric_anchor)
     report["BarTender导出"]["合格证面料字号"] = fabric_font_size
     size_source = _resolve_size_source(content_root, size_source_value)
     if not size_source.is_file():
@@ -117,6 +125,7 @@ def generate_business_images(
                 dealer_address_image,
                 fabric_text=fabric_text,
                 fabric_anchor=fabric_anchor,
+                fallback_fabric_anchor=fallback_fabric_anchor,
                 fabric_fonts=fabric_fonts,
                 font_size=fabric_font_size,
             )
