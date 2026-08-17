@@ -6,11 +6,11 @@ kocotree skills 合集
 
 告诉 Agent 工具（ Codex 等）
 
-> 帮我安装这个skill `https://github.com/ranjingya/kocotree-skills/tree/master/skills/<skill名>`  
+> 帮我安装这个skill `https://github.com/kocotree/kocotree-skills/tree/master/skills/<skill名>`  
 
 `<skill名>` 换成想安装的那个skill名  
 
-> 如：帮我安装这个skill `https://github.com/ranjingya/kocotree-skills/tree/master/skills/storage-analyzer`
+> 如：帮我安装这个skill `https://github.com/kocotree/kocotree-skills/tree/master/skills/storage-analyzer`
 
 ## 说明文档  
 [KOCOTREE SKILLS 引导](https://kocotree.feishu.cn/wiki/VVVYwc2LIirFi7kEOX7chht7nIe)
