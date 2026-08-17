@@ -6,6 +6,7 @@ from .utils import list_images
 
 
 SKU赠品分支 = {"加赠品", "无赠品"}
+SKU组合目录 = "sku组合"
 
 
 源目录规则 = {
@@ -114,6 +115,26 @@ def get_sku800_recursive(source_root: Path) -> list[Path]:
     if sized:
         return sized
     return [source for source in sources if source.parent == sku_root]
+
+
+def get_combination_sku(source_root: Path) -> list[Path]:
+    """读取 SKU 根目录下的组合 SKU 图片。
+
+    功能说明：定位名为 `SKU组合` 的直接子目录并递归读取其中图片。
+    参数：
+        source_root：产品素材根目录。
+    返回值：
+        组合 SKU 图片列表；目录不存在时返回空列表。
+    """
+    sku_root = resolve_sku_root(source_root)
+    if not sku_root.is_dir():
+        return []
+    directories = [
+        child
+        for child in sku_root.iterdir()
+        if child.is_dir() and child.name.casefold().replace(" ", "") == SKU组合目录
+    ]
+    return [source for directory in directories for source in list_images(directory, recursive=True)]
 
 
 def get_sku1440(source_root: Path) -> list[Path]:

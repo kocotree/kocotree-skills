@@ -6,7 +6,12 @@ from common import ensure_dir, add_review_suggestion, list_images
 from common.color_naming import color_output_name
 from common.detail_page_slice import merge_long_detail_slices
 from common.image_resize_compress import process_jpg_original_or_compress
-from common.scan_source_pack import get_image_group, get_sku800_recursive, resolve_sku_root
+from common.scan_source_pack import (
+    get_combination_sku,
+    get_image_group,
+    get_sku800_recursive,
+    resolve_sku_root,
+)
 
 
 平台 = "蜂享家＋爱库存"
@@ -69,9 +74,9 @@ def _batch_jpg(sources: list[Path], output_dir: Path, usage: str, report: dict) 
 
 
 def _copy_sku800_tree(source_root: Path, output_dir: Path, report: dict) -> None:
-    """复制 SKU 800 图并保留赠品分支。
+    """复制 SKU 800 图、赠品分支和组合 SKU。
 
-    功能说明：标准 `SKU/800` 直接输出图片；嵌套赠品结构保留其相对目录。
+    功能说明：标准 `SKU/800` 直接输出图片；赠品和 `SKU组合` 保留相对目录。
     参数：
         source_root：产品素材根目录。
         output_dir：蜂享家与爱库存的 800 SKU 输出目录。
@@ -81,7 +86,8 @@ def _copy_sku800_tree(source_root: Path, output_dir: Path, report: dict) -> None
     """
     sku_root = resolve_sku_root(source_root)
     ensure_dir(output_dir)
-    for source in get_sku800_recursive(source_root):
+    sources = [*get_sku800_recursive(source_root), *get_combination_sku(source_root)]
+    for source in dict.fromkeys(sources):
         relative = source.relative_to(sku_root)
         if len(relative.parts) == 2 and relative.parts[0].casefold() == "800":
             relative = Path(relative.name)
