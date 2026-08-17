@@ -150,6 +150,26 @@ class OffsiteTests(unittest.TestCase):
             self.assertTrue((root / "天猫sku" / "800" / "蓝色.jpg").is_file())
             self.assertTrue((root / "天猫sku" / "1440").is_dir())
 
+    def test_combination_sku_goes_only_to_tmall_and_fengxiang(self) -> None:
+        """验证组合 SKU 仅进入天猫和蜂享家爱库存。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            source_root = root / "数据包"
+            standard = source_root / "sku" / "800" / "薄藤粉.jpg"
+            combination = source_root / "sku" / "SKU组合" / "薄藤粉.jpg"
+            for source in (standard, combination):
+                source.parent.mkdir(parents=True, exist_ok=True)
+                Image.new("RGB", (800, 800), "white").save(source)
+            report = new_report(source_root, None, root / "输出")
+
+            _copy_sku_tree(source_root, root / "天猫sku", report)
+            _copy_sku800_tree(source_root, root / "蜂享家sku", report)
+            offsite_sources = _select_offsite_sku_sources(source_root)
+
+            self.assertTrue((root / "天猫sku" / "SKU组合" / "薄藤粉.jpg").is_file())
+            self.assertTrue((root / "蜂享家sku" / "SKU组合" / "薄藤粉.jpg").is_file())
+            self.assertEqual(offsite_sources, [standard.resolve()])
+
     def test_color_assets_use_sku_names(self) -> None:
         """验证站外白底图、Logo 图和透明图使用 SKU 颜色名称。"""
         with TemporaryDirectory() as temp_dir_value:
