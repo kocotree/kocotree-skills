@@ -9,12 +9,21 @@ from PIL import Image
 from common import new_report
 from common.quality_audit import audit_gift_sku_outputs
 from platforms.fengxiang_aikucun import _copy_sku800_tree
-from platforms.offsite import _select_offsite_sku_sources, derive
+from platforms.offsite import _select_offsite_sku_sources, _sku_output_path, derive
 from platforms.tmall import _copy_sku_tree
 
 
 class OffsiteTests(unittest.TestCase):
     """验证站外平台素材图派生流程。"""
+
+    def test_sku_output_name_uses_only_specification(self) -> None:
+        """验证站外 SKU 文件名不包含赠品与尺寸目录名称。"""
+        source = Path("SKU") / "无赠品" / "800" / "企鹅团团-浅灰.jpg"
+        output_dir = Path("输出") / "站外通用版" / "sku"
+
+        output = _sku_output_path(source, Path("SKU"), output_dir, set())
+
+        self.assertEqual(output, output_dir / "企鹅团团-浅灰.jpg")
 
     def test_nested_material_image_is_generated(self) -> None:
         with TemporaryDirectory() as temp_dir_value:

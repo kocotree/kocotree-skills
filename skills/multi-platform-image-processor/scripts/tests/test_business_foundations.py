@@ -114,6 +114,29 @@ class BusinessSettingsTests(unittest.TestCase):
             self.assertEqual(names[(root / "白底图/1.jpg").resolve()], "豆蔻紫")
             self.assertEqual(names[(root / "透明图/2.png").resolve()], "远海蓝")
 
+    def test_gift_sku_uses_only_no_gift_names_for_color_assets(self) -> None:
+        """验证赠品结构的颜色素材只接受无赠品规格名称。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            for relative in (
+                "SKU/加赠品/800/赠品款.jpg",
+                "SKU/无赠品/800/企鹅团团-浅灰.jpg",
+                "白底图/1.jpg",
+            ):
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                Image.new("RGB", (8, 8), "white").save(path)
+
+            names = resolve_color_names(
+                root,
+                {"白底图/1.jpg": "企鹅团团-浅灰"},
+            )
+
+            self.assertEqual(
+                names[(root / "白底图/1.jpg").resolve()],
+                "企鹅团团-浅灰",
+            )
+
     def test_offsite_template_uses_business_folder_names(self) -> None:
         """验证站外模板只包含最终业务目录名称。"""
         template_root = Path(__file__).resolve().parents[2] / "template" / "站外通用版"

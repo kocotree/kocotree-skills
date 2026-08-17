@@ -205,11 +205,15 @@ def _unique_output_path(path: Path, used: set[Path]) -> Path:
     return candidate
 
 
-def _sku_output_path(source: Path, source_base: Path, output_dir: Path, used: set[Path]) -> Path:
-    try:
-        relative = source.relative_to(source_base)
-    except ValueError:
-        relative = Path(source.name)
-    name_parts = [*relative.parent.parts, relative.stem]
-    safe_name = "_".join(part for part in name_parts if part)
-    return _unique_output_path(output_dir / f"{safe_name}.jpg", used)
+def _sku_output_path(source: Path, _source_base: Path, output_dir: Path, used: set[Path]) -> Path:
+    """按 SKU 规格名称生成站外输出路径。
+
+    参数：
+        source：选中的无赠品 800 SKU 图片。
+        _source_base：SKU 根目录，当前命名规则不使用该值。
+        output_dir：站外 SKU 输出目录。
+        used：本轮已经占用的输出路径。
+    返回值：
+        仅使用源文件规格名称的唯一 JPG 输出路径。
+    """
+    return _unique_output_path(output_dir / f"{source.stem}.jpg", used)

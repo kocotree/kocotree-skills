@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from PIL import Image, ImageChops
 
+import common.certificate_composer as certificate_composer
 from common.bartender_exporter import export_bartender_image, fingerprint
 from common.certificate_composer import compose_certificate, compose_hangtag
 from common.font_assets import load_font_assets
@@ -22,9 +23,9 @@ from common.material_editor import (
 )
 from common.size_table_extractor import (
     CropBox,
+    _render_size_unit,
     compose_size_image,
     extract_size_table,
-    extract_size_unit,
 )
 
 
@@ -161,23 +162,30 @@ class BusinessImageComposerTests(unittest.TestCase):
             self._make_certificate(source)
             self._make_dealer_address(dealer_address)
 
-            with self.assertLogs("common.certificate_composer", level="WARNING") as captured:
+            with patch(
+                "common.certificate_composer._draw_fabric_text",
+                wraps=certificate_composer._draw_fabric_text,
+            ) as draw_fabric, self.assertLogs(
+                "common.certificate_composer",
+                level="WARNING",
+            ) as captured:
                 output = compose_certificate(
                     source,
                     root / "合格证" / "合格证图.jpg",
                     dealer_address,
                     fabric_text="面料1：100%聚酯纤维\n面料2：56.2%棉 43.8%聚酯纤维\n里料：100%棉",
                     fabric_anchor=(640, 80),
-                    fallback_fabric_anchor=(20, 150),
                     fabric_fonts=load_font_assets(),
-                    font_size=20,
+                    font_size=30,
                 )
 
             self.assertTrue(output.is_file())
-            self.assertTrue(any("使用价格下方布局" in message for message in captured.output))
+            self.assertTrue(any("使用价格下方固定布局" in message for message in captured.output))
+            self.assertEqual(draw_fabric.call_args.args[4], 20)
+            self.assertEqual(draw_fabric.call_args.args[6], 6)
 
-    def test_size_table_crop_and_size_image_include_source_unit(self) -> None:
-        """验证尺码表保留底边，并在成品右上角显示源图单位。"""
+    def test_size_table_crop_and_size_image_include_actual_unit(self) -> None:
+        """验证尺码表保留底边，并按实际单位和 80% 宽度生成成品。"""
         with TemporaryDirectory() as temp_dir_value:
             root = Path(temp_dir_value)
             source = root / "detail.png"
@@ -188,34 +196,33 @@ class BusinessImageComposerTests(unittest.TestCase):
             for x in (100, 300, 500, 700, 900):
                 for y in range(300, 701):
                     detail.putpixel((x, y), (0, 0, 0))
-            for x in range(800, 901):
-                for y in range(220, 261):
-                    detail.putpixel((x, y), (220, 20, 20))
             detail.save(source)
             table = extract_size_table(source, root / "table.png", CropBox(100, 300, 901, 701))
-            unit = extract_size_unit(source, root / "unit.png", CropBox(800, 220, 901, 261))
             with Image.open(table) as image:
                 self.assertEqual(image.size, (801, 401))
                 self.assertEqual(image.getpixel((0, 400)), (0, 0, 0))
 
             certificate = root / "certificate.png"
             self._make_certificate(certificate)
-            result = compose_size_image(certificate, table, unit, root / "尺码图" / "尺码图.jpg")
+            result = compose_size_image(certificate, table, "mm", root / "尺码图" / "尺码图.jpg")
             with Image.open(result) as image:
                 self.assertEqual(image.size, (800, 800))
-                unit_area = image.crop((620, 240, 790, 380)).convert("RGB")
-                pixels = (
-                    unit_area.getpixel((x, y))
-                    for y in range(unit_area.height)
-                    for x in range(unit_area.width)
-                )
-                red_pixels = sum(
-                    1
-                    for red, green, blue in pixels
-                    if red > 150 and red > green * 2 and red > blue * 2
-                )
-                self.assertGreater(red_pixels, 100)
+                dark_counts = [
+                    sum(1 for x in range(image.width) if max(image.getpixel((x, y))) < 100)
+                    for y in range(image.height)
+                ]
+                self.assertTrue(any(570 <= count <= 615 for count in dark_counts))
+                self.assertTrue(any(count >= 700 for count in dark_counts))
             self.assertLessEqual(result.stat().st_size, 500 * 1024)
+
+    def test_size_unit_uses_supplied_text(self) -> None:
+        """验证尺码单位由实际文本生成，不使用固定单位。"""
+        fonts = load_font_assets()
+
+        cm = _render_size_unit("cm", fonts)
+        mm = _render_size_unit("mm", fonts)
+
+        self.assertNotEqual(cm.tobytes(), mm.tobytes())
 
 
 class MaterialProcessingTests(unittest.TestCase):

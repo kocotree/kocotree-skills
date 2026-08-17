@@ -23,6 +23,10 @@ logger = logging.getLogger(__name__)
 _DEALER_ADDRESS_MAXIMUM = (450, 100)
 _DEALER_ADDRESS_GAP = 30
 _CERTIFICATE_CONTENT_MAXIMUM = (650, 1250)
+_FALLBACK_FABRIC_FONT_SIZE = 20
+_FALLBACK_FABRIC_LINE_SPACING = 6
+_FALLBACK_FABRIC_TOP_GAP = 24
+_FALLBACK_DEALER_GAP = 6
 
 
 def _prepare_fabric_layout(
@@ -63,9 +67,10 @@ def _draw_fabric_text(
     fonts: dict[str, FontAsset],
     font_size: int,
     line_height: int,
+    line_spacing: int = 8,
 ) -> None:
     """按已确认布局绘制合格证面料文字。"""
-    style = TextStyle(font_size, (20, 20, 20), 8)
+    style = TextStyle(font_size, (20, 20, 20), line_spacing)
     for line_index, line in enumerate(lines):
         if line:
             draw_mixed_text(
@@ -128,7 +133,6 @@ def compose_certificate(
     dealer_address_image: Path,
     fabric_text: str = "",
     fabric_anchor: tuple[int, int] | None = None,
-    fallback_fabric_anchor: tuple[int, int] | None = None,
     fabric_fonts: dict[str, FontAsset] | None = None,
     font_size: int = 34,
 ) -> Path:
@@ -140,7 +144,6 @@ def compose_certificate(
         dealer_address_image：固定经销商与地址图片。
         fabric_text：可选的中文面料原文。
         fabric_anchor：面料在导出图坐标中的左上锚点。
-        fallback_fabric_anchor：等级下方无法容纳时，价格下方的备用左上锚点。
         fabric_fonts：合格证面料使用的字体角色映射。
         font_size：面料字号。
     返回值：
@@ -157,60 +160,90 @@ def compose_certificate(
             normalize_parentheses(fabric_text.strip()),
         )
         text = f"面料：{payload}"
-        used_anchor = fabric_anchor
+        fallback_lines: list[str] | None = None
         try:
             lines, line_height = _prepare_fabric_layout(
                 subject,
                 text,
-                used_anchor,
+                fabric_anchor,
                 fabric_fonts,
                 font_size,
+            )
+            _draw_fabric_text(
+                subject,
+                lines,
+                fabric_anchor,
+                fabric_fonts,
+                font_size,
+                line_height,
             )
         except RuntimeError as primary_error:
-            if fallback_fabric_anchor is None:
-                raise
-            used_anchor = fallback_fabric_anchor
-            lines, line_height = _prepare_fabric_layout(
-                subject,
+            fallback_lines = wrap_mixed_text(
                 text,
-                used_anchor,
                 fabric_fonts,
-                font_size,
+                _FALLBACK_FABRIC_FONT_SIZE,
+                _CERTIFICATE_CONTENT_MAXIMUM[0],
             )
             logger.warning(
-                "合格证等级下方无法容纳面料，使用价格下方布局 reason=%s anchor=%s",
+                "合格证等级下方无法容纳面料，使用价格下方固定布局 reason=%s",
                 primary_error,
-                used_anchor,
             )
-        _draw_fabric_text(
-            subject,
-            lines,
-            used_anchor,
-            fabric_fonts,
-            font_size,
-            line_height,
-        )
+    else:
+        fallback_lines = None
     if not dealer_address_image.is_file():
         raise RuntimeError(f"合格证经销商地址图片不存在：{dealer_address_image}")
     with Image.open(dealer_address_image) as opened:
         dealer_address = fit_contain(opened.convert("RGB"), _DEALER_ADDRESS_MAXIMUM)
-    available_subject_height = (
-        _CERTIFICATE_CONTENT_MAXIMUM[1] - dealer_address.height - _DEALER_ADDRESS_GAP
-    )
+    if fallback_lines:
+        fallback_line_height = mixed_line_height(
+            text,
+            fabric_fonts,
+            _FALLBACK_FABRIC_FONT_SIZE,
+            _FALLBACK_FABRIC_LINE_SPACING,
+        )
+        fallback_height = fallback_line_height * len(fallback_lines)
+        trailing_height = (
+            _FALLBACK_FABRIC_TOP_GAP
+            + fallback_height
+            + _FALLBACK_DEALER_GAP
+            + dealer_address.height
+        )
+    else:
+        fallback_line_height = 0
+        fallback_height = 0
+        trailing_height = _DEALER_ADDRESS_GAP + dealer_address.height
+    available_subject_height = _CERTIFICATE_CONTENT_MAXIMUM[1] - trailing_height
+    if available_subject_height <= 0:
+        raise RuntimeError("合格证面料和经销商地址超出内容区")
     fitted = fit_contain(
         subject,
         (_CERTIFICATE_CONTENT_MAXIMUM[0], available_subject_height),
     )
+    content_height = fitted.height + trailing_height
     content = Image.new(
         "RGB",
         (
             max(fitted.width, dealer_address.width),
-            fitted.height + _DEALER_ADDRESS_GAP + dealer_address.height,
+            content_height,
         ),
         (255, 255, 255),
     )
     content.paste(fitted, (0, 0))
-    content.paste(dealer_address, (0, fitted.height + _DEALER_ADDRESS_GAP))
+    if fallback_lines:
+        fabric_top = fitted.height + _FALLBACK_FABRIC_TOP_GAP
+        _draw_fabric_text(
+            content,
+            fallback_lines,
+            (0, fabric_top),
+            fabric_fonts,
+            _FALLBACK_FABRIC_FONT_SIZE,
+            fallback_line_height,
+            _FALLBACK_FABRIC_LINE_SPACING,
+        )
+        dealer_top = fabric_top + fallback_height + _FALLBACK_DEALER_GAP
+    else:
+        dealer_top = fitted.height + _DEALER_ADDRESS_GAP
+    content.paste(dealer_address, (0, dealer_top))
     canvas = Image.new("RGB", (750, 1600), (255, 255, 255))
     position = ((750 - content.width) // 2, (1600 - content.height) // 2)
     canvas.paste(content, position)
