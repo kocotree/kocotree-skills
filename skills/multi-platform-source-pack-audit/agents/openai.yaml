@@ -1,0 +1,4 @@
+interface:
+  display_name: "多平台原始数据包质检"
+  short_description: "检查原始输入包的目录命名、图片、资料、字体、平台规格与合规问题，并生成飞书错误清单"
+  default_prompt: "使用 $multi-platform-source-pack-audit 全量质检这个视觉部原始数据包，完成目录命名、字体与平台专项检查，并生成带图片证据的飞书错误清单。"

@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "outer_edge_modules": [
+    "*"
+  ],
+  "internal_seam_modules": [
+    "详情"
+  ],
+  "edge_review_sheet_modules": [
+    "详情"
+  ],
+  "completed_review_status": "checked",
+  "completed_check_statuses": [
+    "pass",
+    "issue",
+    "needs_review"
+  ],
+  "not_applicable_status": "not_applicable",
+  "text_presence_statuses": [
+    "present",
+    "absent",
+    "unreadable"
+  ],
+  "issue_statuses": [
+    "issue"
+  ],
+  "statuses_requiring_notes": [
+    "issue",
+    "needs_review"
+  ],
+  "confirmed_issue_statuses": [
+    "issue",
+    "错误",
+    "已确认错误"
+  ],
+  "edge_strip_pixels": 16,
+  "edge_zoom": 8,
+  "max_review_width": 1000
+}

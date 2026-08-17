@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "root_name_pattern": "^(?P<style_code>\\S+) (?P<product_name>\\S(?:.*\\S)?)$",
+  "required_top_level_directories": [
+    "主图",
+    "SKU",
+    "白底图",
+    "透明底",
+    "详情",
+    "素材图"
+  ],
+  "image_extensions": [
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+    ".bmp",
+    ".gif",
+    ".tif",
+    ".tiff",
+    ".avif"
+  ],
+  "color_name_pattern": "^(?!\\d+$).+[^\\s]$|^[^\\s]$",
+  "disallowed_color_names": [
+    "白底",
+    "白底图",
+    "透明底",
+    "透明图",
+    "SKU"
+  ],
+  "color_modules": [
+    "白底图",
+    "透明底",
+    "SKU"
+  ],
+  "module_rules": {
+    "主图": {
+      "layout": "dimension_subdirectories",
+      "extensions": [
+        ".jpg",
+        ".jpeg"
+      ],
+      "filename_pattern": "^(?P<identifier>\\d+(?:-\\d+)?)$",
+      "dimension_overrides": {
+        "1440": [
+          1440,
+          1440
+        ],
+        "750": [
+          750,
+          1000
+        ],
+        "800": [
+          800,
+          800
+        ]
+      }
+    },
+    "SKU": {
+      "layout": "dimension_subdirectories",
+      "extensions": [
+        ".jpg",
+        ".jpeg"
+      ],
+      "filename_pattern": "^(?P<identifier>.+)$",
+      "color_named": true,
+      "dimension_overrides": {}
+    },
+    "白底图": {
+      "layout": "direct",
+      "extensions": [
+        ".jpg",
+        ".jpeg"
+      ],
+      "filename_pattern": "^(?P<identifier>.+)$",
+      "color_named": true
+    },
+    "透明底": {
+      "layout": "direct",
+      "extensions": [
+        ".png"
+      ],
+      "filename_pattern": "^(?P<identifier>.+)$",
+      "color_named": true,
+      "requires_png_alpha": true
+    },
+    "详情": {
+      "layout": "direct",
+      "extensions": [
+        ".jpg",
+        ".jpeg"
+      ],
+      "filename_pattern": "^(?P<identifier>\\d+_\\d{2}(?:-\\d+)?(?: \\(\\d+\\))?)$"
+    },
+    "素材图": {
+      "layout": "dimension_subdirectories_or_dimension_file",
+      "extensions": [
+        ".jpg",
+        ".jpeg"
+      ],
+      "filename_pattern": "^(?P<identifier>\\d+(?:-\\d+)?)$",
+      "direct_filename_pattern": "^(?P<identifier>\\d+[-x×]\\d+)$",
+      "dimension_overrides": {}
+    }
+  }
+}
