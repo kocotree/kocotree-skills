@@ -17,6 +17,7 @@ from PIL import Image
 
 from .utils import add_failure, add_review_suggestion, add_risk, ensure_dir
 from .image_resize_compress import fit_into_canvas, open_image, save_jpg_under
+from .run_workspace import TEXT_REMOVAL_CANDIDATES_ENV
 from .sku_card_crop import (
     CardCropError,
     build_model_input,
@@ -279,7 +280,12 @@ def ensure_text2image_ready() -> tuple[bool, str]:
 
 
 def get_text_removal_temp_dir() -> Path:
-    return ensure_dir(Path(__file__).resolve().parents[1] / "output" / "image-without-text-tmp")
+    """返回当前运行的站外 SKU 去字候选图目录。"""
+    configured = os.environ.get(TEXT_REMOVAL_CANDIDATES_ENV, "").strip()
+    if configured:
+        return ensure_dir(Path(configured).expanduser().resolve())
+    fallback = Path(__file__).resolve().parents[1] / "output" / "runs" / "unscoped" / "candidates"
+    return ensure_dir(fallback)
 
 
 def prune_temp_images(temp_dir: Path, keep: int = 100) -> None:

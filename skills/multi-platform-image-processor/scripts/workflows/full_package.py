@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -17,14 +18,18 @@ from common.settings import resolve_business_paths
 from common.run_logging import (
     close_run_file_logging,
     configure_run_file_logging,
-    default_run_log_path,
-    prune_run_logs,
-    report_artifact_prefix,
+)
+from common.run_workspace import (
+    TEXT_REMOVAL_CANDIDATES_ENV,
+    create_run_workspace,
+    prune_internal_runs,
+    publish_delivery,
+    replace_report_path_prefix,
 )
 from common.utils import add_report_item, new_report
-from common.write_report import prune_report_files, write_report
+from common.write_report import write_report
 
-from .business_support import default_business_report_path, load_plan, product_match_to_dict
+from .business_support import load_plan, product_match_to_dict
 from .certificate_assets import generate_business_images
 from .material_correction import apply_material_plan
 from .platform_processing import (
@@ -48,15 +53,21 @@ def run_full_workflow(args: Any) -> int:
     product_code = args.product_code.strip() or infer_product_code(source)
     product_name = args.product_name.strip()
     output_root = Path(args.output).expanduser().resolve() if args.output else default_output_path()
-    report_path = default_business_report_path(product_code)
+    workspace = create_run_workspace(product_code)
+    prune_internal_runs(protected=workspace.root)
+    report_path = workspace.report_path
     template = default_template_path()
     report = new_report(source, template, output_root)
-    run_id = report_artifact_prefix(report_path)
+    run_id = workspace.run_id
     display_product = product_name or product_code or source.parent.name or source.name
-    log_path = configure_run_file_logging(default_run_log_path(report_path), run_id, display_product)
+    log_path = configure_run_file_logging(workspace.log_path, run_id, display_product)
     report["处理配置"]["运行ID"] = run_id
     report["处理配置"]["产品名"] = display_product
+    report["追溯文件"]["运行目录"] = str(workspace.root)
+    report["追溯文件"]["内部报告"] = str(report_path)
     report["追溯文件"]["运行日志"] = str(log_path)
+    previous_candidates_dir = os.environ.get(TEXT_REMOVAL_CANDIDATES_ENV)
+    os.environ[TEXT_REMOVAL_CANDIDATES_ENV] = str(workspace.candidates_dir)
     context_value = getattr(args, "context", "")
     context = load_plan(Path(context_value).expanduser().resolve()) if context_value else {}
     try:
@@ -112,19 +123,19 @@ def run_full_workflow(args: Any) -> int:
             platform_code, product_output = run_platform_processing(
                 source,
                 template,
-                output_root,
+                workspace.staging_root,
                 report,
                 product_code=confirmed_product_code,
                 product_name=confirmed_product_name,
                 detail_plan=detail_plan,
                 detail_overrides=detail_overrides,
                 color_name_plan=context.get("颜色命名"),
+                delivery_timestamp=workspace.timestamp,
             )
-        report["路径"]["最终输出"] = str(product_output)
         if platform_code != 0:
             logger.warning("平台处理存在失败项 code=%d", platform_code)
 
-        generate_business_images(
+        business_ok = generate_business_images(
             context=context,
             product_name=confirmed_product_name,
             representative_color=representative_color,
@@ -134,11 +145,30 @@ def run_full_workflow(args: Any) -> int:
             certificate_root=certificate_root,
             report=report,
         )
+        if not business_ok and not report["失败项"]:
+            raise RuntimeError("业务图片生成未通过")
+        if platform_code != 0 and not report["失败项"]:
+            raise RuntimeError("六平台处理未通过")
+        if not report["失败项"]:
+            staging_product = product_output
+            final_output = publish_delivery(staging_product, output_root)
+            report = replace_report_path_prefix(report, staging_product, final_output)
+            report["处理配置"]["输出目录"] = str(final_output)
+            report["处理配置"]["输出根目录"] = str(output_root)
+            report["路径"]["最终输出"] = str(final_output)
+        else:
+            report["路径"]["最终输出"] = ""
     except Exception as exc:
+        report["路径"]["最终输出"] = ""
         add_report_item(report, "失败项", "完整流程执行失败", 错误=str(exc))
     finally:
-        write_report(report, report_path)
-        prune_report_files(report_path.parent)
-        prune_run_logs(log_path.parent)
-        close_run_file_logging()
+        try:
+            write_report(report, report_path)
+        finally:
+            if previous_candidates_dir is None:
+                os.environ.pop(TEXT_REMOVAL_CANDIDATES_ENV, None)
+            else:
+                os.environ[TEXT_REMOVAL_CANDIDATES_ENV] = previous_candidates_dir
+            close_run_file_logging()
+            prune_internal_runs(protected=workspace.root)
     return 0 if not report["失败项"] else 1
