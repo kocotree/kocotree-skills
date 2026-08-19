@@ -10,6 +10,8 @@ from PIL import Image, ImageDraw
 from common.sku_card_crop import (
     build_model_input,
     composite_editable_regions,
+    detect_bottom_label_plan,
+    detect_label_plan,
     detect_right_card_plan,
     normalize_model_output,
     validate_protected_regions,
@@ -25,6 +27,16 @@ def create_sample_sku() -> Image.Image:
     draw.rectangle((590, 310, 700, 500), fill=(245, 210, 215))
     draw.rounded_rectangle((510, 520, 770, 620), radius=12, fill=(42, 165, 78))
     draw.rectangle((610, 555, 670, 585), fill=(255, 255, 255))
+    return image
+
+
+def create_bottom_label_sku() -> Image.Image:
+    """创建包含底部横向彩色标签的测试图。"""
+    image = Image.new("RGB", (800, 800), (238, 238, 238))
+    draw = ImageDraw.Draw(image)
+    draw.ellipse((170, 600, 630, 860), fill=(42, 165, 78))
+    draw.rectangle((0, 680, 800, 800), fill=(42, 165, 78))
+    draw.rectangle((260, 700, 540, 760), fill=(255, 255, 255))
     return image
 
 
@@ -74,6 +86,34 @@ class SkuCardCropTests(unittest.TestCase):
         plan = detect_right_card_plan(image)
 
         self.assertTrue(any(top >= 680 for _, top, _, _ in plan.label_boxes))
+
+    def test_detects_bottom_full_width_label(self) -> None:
+        """验证底部横向彩色标签能够进入统一去字流程。"""
+        image = create_bottom_label_sku()
+
+        plan = detect_bottom_label_plan(image)
+        unified_plan = detect_label_plan(image)
+
+        self.assertEqual(plan.layout, "底部标签")
+        self.assertEqual(plan.crop_left, 0)
+        self.assertEqual(plan.crop_right, image.width)
+        self.assertEqual(plan.crop_bottom, image.height)
+        self.assertEqual(unified_plan.layout, "底部标签")
+        self.assertTrue(plan.label_boxes)
+
+    def test_bottom_label_model_input_keeps_only_bottom_crop(self) -> None:
+        """验证底部标签模型输入保留裁片并留白其他区域。"""
+        image = create_bottom_label_sku()
+        plan = detect_bottom_label_plan(image)
+
+        model_input = build_model_input(image, plan)
+
+        self.assertEqual(model_input.size, image.size)
+        self.assertEqual(
+            model_input.crop(plan.crop_box).tobytes(),
+            image.crop(plan.crop_box).tobytes(),
+        )
+        self.assertEqual(model_input.getpixel((400, 100)), (255, 255, 255))
 
     def test_model_input_keeps_original_dimensions(self) -> None:
         image = create_sample_sku()

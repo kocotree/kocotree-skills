@@ -222,6 +222,15 @@ class ProductInfoTests(unittest.TestCase):
 
         self.assertEqual(extract_chinese_material(value), "成分：98.3%聚酯纤维\n1.7%氨纶")
 
+    def test_chinese_material_keeps_embedded_latin_symbols(self) -> None:
+        """验证中文面料中的化学符号不会被误判为英文段。"""
+        value = "杯身内胆：06Cr17Ni12Mo2(内胆S316)\n螺牙盖/吸管：聚丙烯（PP）\nMaterial: stainless steel"
+
+        self.assertEqual(
+            extract_chinese_material(value),
+            "杯身内胆：06Cr17Ni12Mo2(内胆S316)\n螺牙盖/吸管：聚丙烯（PP）",
+        )
+
     def test_specification_and_size_remain_separate(self) -> None:
         """验证真实产品表中的规格与尺码分别保留。"""
         with TemporaryDirectory() as temp_dir_value:

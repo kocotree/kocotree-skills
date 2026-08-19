@@ -52,7 +52,8 @@ def extract_chinese_material(value: object) -> str:
         line = raw_line.strip()
         if not line:
             continue
-        if re.search(r"[A-Za-z]", line):
+        has_chinese = bool(re.search(r"[\u4e00-\u9fff]", line))
+        if re.search(r"[A-Za-z]", line) and not has_chinese:
             break
         chinese_lines.append(line)
     return "\n".join(chinese_lines).strip()

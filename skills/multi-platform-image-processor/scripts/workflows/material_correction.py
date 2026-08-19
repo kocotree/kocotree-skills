@@ -55,9 +55,19 @@ def apply_material_plan(
         return None
     plan = load_plan(plan_path)
     items = plan.get("面料区域")
-    if not isinstance(items, list) or not items:
+    if not isinstance(items, list):
         add_report_item(report, "失败项", "面料视觉定位计划没有“面料区域”列表")
         return None
+    if not items:
+        report["面料检查"]["检查项"].append(
+            {
+                "Excel原文": expected,
+                "已修改": False,
+                "检查结论": "详情页未发现需要重绘的面料字段",
+            }
+        )
+        logger.info("详情页面料检查结束 passed=True corrected_images=0 reason=no_target_region")
+        return {}
     fonts = load_font_assets()
     source_root = source_root.resolve()
     staging_root.mkdir(parents=True, exist_ok=True)
