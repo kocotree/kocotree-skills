@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from .utils import list_images
@@ -7,6 +8,9 @@ from .utils import list_images
 
 SKU赠品分支 = {"加赠品", "无赠品"}
 SKU组合目录 = "sku组合"
+SKU尺寸目录 = {"800", "800x800", "1400", "1440"}
+
+logger = logging.getLogger(__name__)
 
 
 源目录规则 = {
@@ -81,6 +85,29 @@ def has_gift_sku_branches(source_root: Path) -> bool:
     return bool(branch_names.intersection(SKU赠品分支))
 
 
+def normalize_sku_directory_name(name: str) -> str:
+    """规范 SKU 目录名供尺寸和业务分支判断。"""
+    return name.casefold().replace("×", "x").replace(" ", "")
+
+
+def is_sku_size_directory(name: str) -> bool:
+    """判断目录名是否表示 SKU 图片尺寸。"""
+    return normalize_sku_directory_name(name) in SKU尺寸目录
+
+
+def has_sku_business_branches(source_root: Path) -> bool:
+    """判断 SKU 根目录是否包含尺寸目录之外的业务分支。"""
+    sku_root = resolve_sku_root(source_root)
+    if not sku_root.is_dir():
+        return False
+    return any(
+        child.is_dir()
+        and not is_sku_size_directory(child.name)
+        and normalize_sku_directory_name(child.name) != SKU组合目录
+        for child in sku_root.iterdir()
+    )
+
+
 def get_image_group(source_root: Path, key: str, recursive: bool = False) -> list[Path]:
     return list_images(resolve_source_path(source_root, key), recursive=recursive)
 
@@ -95,7 +122,8 @@ def get_sku800(source_root: Path) -> list[Path]:
 def get_sku800_recursive(source_root: Path) -> list[Path]:
     """递归读取 SKU 树中的 800 图。
 
-    功能说明：识别任意层级的 `800` 或 `800x800` 尺寸目录；没有尺寸目录时使用 SKU 根目录图片。
+    功能说明：识别任意业务分支下的 `800` 或 `800x800` 尺寸目录；
+    没有尺寸目录的分支图片按 800 素材处理。组合 SKU 单独读取。
     参数：
         source_root：产品素材根目录。
     返回值：
@@ -104,17 +132,24 @@ def get_sku800_recursive(source_root: Path) -> list[Path]:
     sku_root = resolve_sku_root(source_root)
     sources = list_images(sku_root, recursive=True)
     sized = []
+    unsized = []
     for source in sources:
         relative = source.relative_to(sku_root)
-        normalized_parts = {
-            part.casefold().replace("×", "x").replace(" ", "")
-            for part in relative.parent.parts
-        }
+        normalized_parts = {normalize_sku_directory_name(part) for part in relative.parent.parts}
+        if SKU组合目录 in normalized_parts:
+            continue
         if normalized_parts.intersection({"800", "800x800"}):
             sized.append(source)
-    if sized:
-        return sized
-    return [source for source in sources if source.parent == sku_root]
+        elif not any(is_sku_size_directory(part) for part in relative.parent.parts):
+            unsized.append(source)
+    selected = list(dict.fromkeys([*sized, *unsized]))
+    logger.info(
+        "SKU 800素材收集完成 sized=%d unsized=%d total=%d",
+        len(sized),
+        len(unsized),
+        len(selected),
+    )
+    return selected
 
 
 def get_combination_sku(source_root: Path) -> list[Path]:

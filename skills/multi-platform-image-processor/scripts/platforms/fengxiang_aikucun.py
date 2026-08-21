@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from common import ensure_dir, add_review_suggestion, list_images
-from common.color_naming import color_output_name
+from common.color_naming import color_output_relative_path
 from common.detail_page_slice import merge_long_detail_slices
 from common.image_resize_compress import process_jpg_original_or_compress
 from common.scan_source_pack import (
@@ -11,6 +11,7 @@ from common.scan_source_pack import (
     get_image_group,
     get_sku800_recursive,
     resolve_sku_root,
+    resolve_source_path,
 )
 
 
@@ -40,7 +41,8 @@ def derive(
     _batch_jpg(get_image_group(source_root, "主图800"), platform_dir / "800主图", "800主图", report)
     _copy_sku800_tree(source_root, platform_dir / "800sku", report)
     _batch_color_jpg(
-        get_image_group(source_root, "白底图"),
+        get_image_group(source_root, "白底图", recursive=True),
+        resolve_source_path(source_root, "白底图"),
         platform_dir / "800白底图",
         "800白底图",
         report,
@@ -98,6 +100,7 @@ def _copy_sku800_tree(source_root: Path, output_dir: Path, report: dict) -> None
 
 def _batch_color_jpg(
     sources: list[Path],
+    source_base: Path,
     output_dir: Path,
     usage: str,
     report: dict,
@@ -105,9 +108,12 @@ def _batch_color_jpg(
 ) -> None:
     ensure_dir(output_dir)
     for source in sources:
+        relative = color_output_relative_path(source, source_base, color_names, ".jpg")
+        output = output_dir / relative
+        ensure_dir(output.parent)
         process_jpg_original_or_compress(
             source,
-            output_dir / color_output_name(source, color_names, ".jpg"),
+            output,
             500 * 1024,
             report,
             平台,

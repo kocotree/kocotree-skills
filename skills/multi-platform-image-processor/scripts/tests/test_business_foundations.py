@@ -11,7 +11,7 @@ import xlwt
 from openpyxl import Workbook
 from PIL import Image
 
-from common.color_naming import resolve_color_names
+from common.color_naming import color_output_relative_path, resolve_color_names
 from common.font_assets import load_font_assets, require_glyphs
 from common.nas_paths import require_accessible_directory, to_unc_path
 from common.product_info_reader import (
@@ -26,6 +26,7 @@ from common.product_matcher import (
     select_bartender_file,
 )
 from common.settings import resolve_business_paths
+from common.scan_source_pack import get_sku800_recursive
 from common.utils import build_platform_directory_names, 平台模板目录名
 
 
@@ -136,6 +137,55 @@ class BusinessSettingsTests(unittest.TestCase):
                 names[(root / "白底图/1.jpg").resolve()],
                 "企鹅团团-浅灰",
             )
+
+    def test_sku_800_is_found_below_business_branches(self) -> None:
+        """验证任意业务分支下的 800 图均能被读取。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            expected = []
+            for relative in (
+                "SKU/款式甲/800/规格一.jpg",
+                "SKU/款式乙/800x800/规格二.jpg",
+            ):
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                Image.new("RGB", (8, 8), "white").save(path)
+                expected.append(path)
+            ignored = root / "SKU/款式甲/1440/规格一.jpg"
+            ignored.parent.mkdir(parents=True)
+            Image.new("RGB", (8, 8), "white").save(ignored)
+
+            self.assertCountEqual(get_sku800_recursive(root), expected)
+
+    def test_unsized_business_branch_images_are_used_as_800(self) -> None:
+        """验证业务分支内没有尺寸目录时图片作为 800 素材。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            expected = root / "SKU/款式甲/规格一.jpg"
+            expected.parent.mkdir(parents=True)
+            Image.new("RGB", (8, 8), "white").save(expected)
+
+            self.assertEqual(get_sku800_recursive(root), [expected])
+
+    def test_branched_color_assets_keep_directory_and_source_name(self) -> None:
+        """验证业务分支颜色素材不依赖 SKU 文件名并保留相对目录。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            sku = root / "SKU/款式甲/800/完整规格名.jpg"
+            white = root / "白底图/款式甲/任意名称.jpg"
+            for path in (sku, white):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                Image.new("RGB", (8, 8), "white").save(path)
+
+            names = resolve_color_names(root, {})
+            relative = color_output_relative_path(
+                white,
+                root / "白底图",
+                names,
+                ".jpg",
+            )
+
+            self.assertEqual(relative, Path("款式甲/任意名称.jpg"))
 
     def test_offsite_template_uses_business_folder_names(self) -> None:
         """验证站外模板只包含最终业务目录名称。"""
