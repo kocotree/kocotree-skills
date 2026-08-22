@@ -5,10 +5,18 @@ import logging
 from pathlib import Path
 
 from common import add_failure, add_review_suggestion, ensure_dir
-from common.color_naming import color_output_name
+from common.color_naming import color_output_relative_path
 from common.image_resize_compress import process_jpg_original_or_compress, process_png_original_or_compress
 from common.logo_overlay import find_logo, overlay_logo
-from common.scan_source_pack import get_image_group, get_sku800_recursive, has_gift_sku_branches, resolve_source_path
+from common.scan_source_pack import (
+    SKU赠品分支,
+    get_image_group,
+    get_sku800_recursive,
+    has_gift_sku_branches,
+    is_sku_size_directory,
+    normalize_sku_directory_name,
+    resolve_source_path,
+)
 from common.text_removal import ensure_text2image_ready, get_text_removal_temp_dir, process_offsite_sku_text_removal, prune_temp_images
 
 
@@ -114,7 +122,8 @@ def derive(
         )
 
     _batch_color_jpg(
-        get_image_group(source_root, "白底图"),
+        get_image_group(source_root, "白底图", recursive=True),
+        resolve_source_path(source_root, "白底图"),
         platform_dir / "白底图",
         "白底图",
         report,
@@ -122,18 +131,23 @@ def derive(
     )
     logo = find_logo(template_root)
     logo_dir = ensure_dir(platform_dir / "白底图＋logo")
-    for source in get_image_group(source_root, "白底图"):
+    white_base = resolve_source_path(source_root, "白底图")
+    for source in get_image_group(source_root, "白底图", recursive=True):
+        relative = color_output_relative_path(source, white_base, color_names, ".jpg")
+        output = logo_dir / relative
+        ensure_dir(output.parent)
         overlay_logo(
             source,
             logo,
-            logo_dir / color_output_name(source, color_names, ".jpg"),
+            output,
             500 * 1024,
             report,
             平台,
             "白底图＋logo",
         )
     _batch_color_png(
-        get_image_group(source_root, "透明图"),
+        get_image_group(source_root, "透明图", recursive=True),
+        resolve_source_path(source_root, "透明图"),
         platform_dir / "透明图",
         "透明图",
         report,
@@ -159,6 +173,7 @@ def derive(
 
 def _batch_color_jpg(
     sources: list[Path],
+    source_base: Path,
     output_dir: Path,
     usage: str,
     report: dict,
@@ -166,9 +181,12 @@ def _batch_color_jpg(
 ) -> None:
     ensure_dir(output_dir)
     for source in sources:
+        relative = color_output_relative_path(source, source_base, color_names, ".jpg")
+        output = output_dir / relative
+        ensure_dir(output.parent)
         process_jpg_original_or_compress(
             source,
-            output_dir / color_output_name(source, color_names, ".jpg"),
+            output,
             500 * 1024,
             report,
             平台,
@@ -178,6 +196,7 @@ def _batch_color_jpg(
 
 def _batch_color_png(
     sources: list[Path],
+    source_base: Path,
     output_dir: Path,
     usage: str,
     report: dict,
@@ -185,9 +204,12 @@ def _batch_color_png(
 ) -> None:
     ensure_dir(output_dir)
     for source in sources:
+        relative = color_output_relative_path(source, source_base, color_names, ".png")
+        output = output_dir / relative
+        ensure_dir(output.parent)
         process_png_original_or_compress(
             source,
-            output_dir / color_output_name(source, color_names, ".png"),
+            output,
             500 * 1024,
             report,
             平台,
@@ -205,15 +227,21 @@ def _unique_output_path(path: Path, used: set[Path]) -> Path:
     return candidate
 
 
-def _sku_output_path(source: Path, _source_base: Path, output_dir: Path, used: set[Path]) -> Path:
-    """按 SKU 规格名称生成站外输出路径。
+def _sku_output_path(source: Path, source_base: Path, output_dir: Path, used: set[Path]) -> Path:
+    """生成保留通用业务分支的站外 SKU 输出路径。
 
     参数：
         source：选中的无赠品 800 SKU 图片。
-        _source_base：SKU 根目录，当前命名规则不使用该值。
+        source_base：SKU 根目录。
         output_dir：站外 SKU 输出目录。
         used：本轮已经占用的输出路径。
     返回值：
-        仅使用源文件规格名称的唯一 JPG 输出路径。
+        标准及赠品结构使用规格文件名，通用业务分支保留源相对目录。
     """
-    return _unique_output_path(output_dir / f"{source.stem}.jpg", used)
+    relative = source.relative_to(source_base).with_suffix(".jpg")
+    directory_parts = relative.parent.parts
+    normalized = {normalize_sku_directory_name(part) for part in directory_parts}
+    is_gift = bool(normalized.intersection(SKU赠品分支))
+    is_standard_size = len(directory_parts) == 1 and is_sku_size_directory(directory_parts[0])
+    target = output_dir / f"{source.stem}.jpg" if is_gift or is_standard_size else output_dir / relative
+    return _unique_output_path(target, used)

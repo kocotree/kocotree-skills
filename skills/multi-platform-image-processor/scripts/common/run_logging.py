@@ -46,24 +46,6 @@ def report_artifact_prefix(path: Path) -> str:
     return stem.removesuffix("-report")
 
 
-def default_run_log_path(report_path: Path) -> Path:
-    """计算主报告对应的运行日志路径。
-
-    功能说明：默认报告目录名为 report 时，将日志保存到同级 logs 目录；
-    其他报告目录使用其下的 logs 子目录。
-
-    参数：
-        report_path：本次运行的主报告路径。
-    返回值：
-        与主报告同前缀的日志文件路径。
-    """
-    if report_path.parent.name == "report":
-        log_dir = report_path.parent.parent / "logs"
-    else:
-        log_dir = report_path.parent / "logs"
-    return log_dir / f"{report_artifact_prefix(report_path)}.log"
-
-
 def configure_run_file_logging(log_path: Path, run_id: str, product: str) -> Path:
     """配置本次处理使用的独立文件日志。
 
@@ -106,23 +88,3 @@ def close_run_file_logging() -> None:
         root_logger.removeHandler(_当前文件处理器)
         _当前文件处理器.close()
         _当前文件处理器 = None
-
-
-def prune_run_logs(log_dir: Path, keep: int = 100) -> None:
-    """保留最近指定数量的运行日志。
-
-    参数：
-        log_dir：运行日志目录。
-        keep：需要保留的最新日志数量。
-    返回值：
-        无返回值。
-    """
-    if not log_dir.is_dir():
-        return
-    logs = sorted(
-        log_dir.glob("*.log"),
-        key=lambda path: (path.stat().st_mtime, path.name),
-        reverse=True,
-    )
-    for old_log in logs[keep:]:
-        old_log.unlink(missing_ok=True)

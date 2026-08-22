@@ -29,6 +29,31 @@ def _resolve_size_source(content_root: Path, value: str) -> Path:
     return path.resolve() if path.is_absolute() else (content_root / path).resolve()
 
 
+def _resolve_certificate_fabric_settings(
+    context: dict[str, Any],
+    fabric_text: str,
+) -> tuple[str, tuple[int, int] | None, int]:
+    """根据原合格证面料完整性决定是否补充 Excel 面料。
+
+    参数：
+        context：Agent 内部视觉定位结果。
+        fabric_text：产品信息 Excel 中的中文面料原文。
+    返回值：
+        待新增的面料文字、可选面料锚点和字号；原合格证信息完整时文字为空。
+    """
+    material_complete = context.get("合格证面料完整")
+    if not isinstance(material_complete, bool):
+        raise ValueError("缺少原合格证面料完整性结论")
+    if material_complete:
+        return "", None, 0
+
+    anchor_value = context.get("合格证面料锚点")
+    font_size = int(context.get("合格证面料字号", 0))
+    if not anchor_value or font_size <= 0:
+        raise ValueError("缺少合格证等级字段下方面料锚点或字号")
+    return fabric_text, parse_point(anchor_value, "合格证面料锚点"), font_size
+
+
 def generate_business_images(
     context: dict[str, Any],
     product_name: str,
@@ -80,23 +105,27 @@ def generate_business_images(
             }
         )
         return False
-    fabric_anchor_value = context.get("合格证面料锚点")
-    fabric_font_size = int(context.get("合格证面料字号", 0))
-    if not fabric_anchor_value or fabric_font_size <= 0:
-        add_report_item(report, "失败项", "缺少合格证等级字段下方面料锚点或字号")
+    try:
+        certificate_fabric_text, fabric_anchor, fabric_font_size = (
+            _resolve_certificate_fabric_settings(context, fabric_text)
+        )
+    except (TypeError, ValueError) as exc:
+        add_report_item(report, "失败项", "合格证面料处理信息不完整", 原因=str(exc))
         report["Agent复核建议"].append(
             {
-                "任务名称": "定位合格证中文面料区域",
+                "任务名称": "确认原合格证面料完整性",
                 "图片路径": [str(selected)],
-                "原因": "需要确认等级字段下方的左上锚点和相邻正文字号",
+                "原因": "需要确认原合格证面料是否完整；需要补充时定位等级下方锚点和字号",
             }
         )
         return False
-    fabric_anchor = parse_point(fabric_anchor_value, "合格证面料锚点")
-    fabric_fonts = load_font_assets()
+    fabric_fonts = load_font_assets() if certificate_fabric_text else None
     dealer_address_image = skill_root() / "assets" / "合格证-经销商地址.jpg"
-    report["BarTender导出"]["合格证面料锚点"] = list(fabric_anchor)
-    report["BarTender导出"]["合格证面料字号"] = fabric_font_size
+    original_material_complete = bool(context["合格证面料完整"])
+    report["BarTender导出"]["原合格证面料完整"] = original_material_complete
+    if fabric_anchor is not None:
+        report["BarTender导出"]["合格证面料锚点"] = list(fabric_anchor)
+        report["BarTender导出"]["合格证面料字号"] = fabric_font_size
     size_source = _resolve_size_source(content_root, size_source_value)
     if not size_source.is_file():
         add_report_item(report, "失败项", "尺码表详情图不存在", 文件=str(size_source))
@@ -112,7 +141,7 @@ def generate_business_images(
                 exported,
                 product_root / "唯品会" / "合格证.jpg",
                 dealer_address_image,
-                fabric_text=fabric_text,
+                fabric_text=certificate_fabric_text,
                 fabric_anchor=fabric_anchor,
                 fabric_fonts=fabric_fonts,
                 font_size=fabric_font_size,
@@ -124,7 +153,11 @@ def generate_business_images(
             report["业务图片"]["合格证图"] = {
                 "状态": "成功",
                 "路径": str(certificate_path),
-                "中文面料": fabric_text,
+                "面料处理": (
+                    "保留原合格证面料"
+                    if original_material_complete
+                    else "补充Excel中文面料"
+                ),
                 "经销商地址图片": str(dealer_address_image),
             }
             report["业务图片"]["吊牌图"] = {"状态": "成功", "路径": str(hangtag_path)}

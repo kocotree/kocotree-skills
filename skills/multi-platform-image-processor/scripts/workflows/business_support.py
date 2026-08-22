@@ -1,18 +1,10 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from common.product_info_reader import ProductInfoRecord
-
-
-def default_business_report_path(product_code: str) -> Path:
-    """生成完整处理流程的默认报告路径。"""
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    safe_code = "".join(character for character in product_code if character.isalnum()) or "product"
-    return Path(__file__).resolve().parents[1] / "output" / "report" / f"{safe_code}-{timestamp}-report.json"
 
 
 def parse_box(value: object, label: str) -> tuple[int, int, int, int]:

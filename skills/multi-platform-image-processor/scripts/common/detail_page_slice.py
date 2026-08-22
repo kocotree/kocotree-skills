@@ -13,11 +13,14 @@ from .image_resize_compress import open_image, save_jpg_under
 
 logger = logging.getLogger(__name__)
 
+轻微超高比例 = 0.01
+
 详情模块顺序 = {
     "品牌背书": 1,
     "KV": 2,
     "图标说明": 3,
     "产品信息": 4,
+    "产品规格": 5,
     "尺码表": 5,
     "尺码快选": 6,
     "卖点": 7,
@@ -359,8 +362,26 @@ def merge_long_detail_slices(
 
 
 def split_by_height(image: Image.Image, max_height: int) -> list[Image.Image]:
+    """按高度限制拆分详情图，并轻微压缩接近上限的尾差。
+
+    参数：
+        image：待处理的详情图。
+        max_height：平台允许的单图最大高度。
+    返回值：
+        满足高度限制的一张或多张详情图。
+    """
     if image.height <= max_height:
         return [image]
+    overflow = image.height - max_height
+    tolerance = max(1, round(max_height * 轻微超高比例))
+    if overflow <= tolerance:
+        logger.info(
+            "详情图轻微超高，纵向适配到平台上限 width=%d height=%d target_height=%d",
+            image.width,
+            image.height,
+            max_height,
+        )
+        return [image.resize((image.width, max_height), Image.Resampling.LANCZOS)]
     parts = []
     count = math.ceil(image.height / max_height)
     for idx in range(count):

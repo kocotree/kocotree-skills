@@ -7,7 +7,11 @@ from tempfile import TemporaryDirectory
 
 from PIL import Image
 
-from common.detail_page_slice import collect_detail_sources, prepare_ordered_detail_sources
+from common.detail_page_slice import (
+    collect_detail_sources,
+    prepare_ordered_detail_sources,
+    split_by_height,
+)
 
 
 def create_rgb(path: Path, size: tuple[int, int] = (16, 12)) -> None:
@@ -29,6 +33,23 @@ class DetailPageSliceTests(unittest.TestCase):
             create_rgb(second)
 
             self.assertEqual(collect_detail_sources(root), [first, second])
+
+    def test_slight_height_overflow_is_resized_without_tail_slice(self) -> None:
+        """验证轻微超高详情图适配为单张平台上限图。"""
+        image = Image.new("RGB", (790, 1603), (220, 220, 220))
+
+        pieces = split_by_height(image, 1600)
+
+        self.assertEqual(len(pieces), 1)
+        self.assertEqual(pieces[0].size, (790, 1600))
+
+    def test_larger_height_overflow_is_still_split(self) -> None:
+        """验证明显超高详情图继续按平台上限切片。"""
+        image = Image.new("RGB", (790, 1617), (220, 220, 220))
+
+        pieces = split_by_height(image, 1600)
+
+        self.assertEqual([piece.height for piece in pieces], [1600, 17])
 
     def test_detail_plan_reorders_required_modules_and_splits_joined_image(self) -> None:
         """验证详情计划按固定模块顺序输出并水平拆分连体图。"""
@@ -118,6 +139,49 @@ class DetailPageSliceTests(unittest.TestCase):
             self.assertEqual(
                 [path.name for path in outputs],
                 ["01.jpg", "04.jpg", "20.jpg", "21.jpg", "05.jpg", "19.jpg", "22.jpg"],
+            )
+
+    def test_non_apparel_product_specifications_follow_product_info(self) -> None:
+        """验证非服装产品的连续规格图移动到产品信息之后。"""
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "产品"
+            detail = root / "详情"
+            for name in ("01.jpg", "04.jpg", "05.jpg", "19.jpg", "20.jpg", "21.jpg", "22.jpg"):
+                create_rgb(detail / name, (790, 120))
+            plan_path = Path(temp_dir) / "detail-plan.json"
+            plan_path.write_text(
+                json.dumps(
+                    {
+                        "详情模块": [
+                            {"类型": "品牌背书", "图片": "详情/01.jpg"},
+                            {"类型": "KV", "图片": "详情/04.jpg"},
+                            {"类型": "卖点", "图片": "详情/05.jpg"},
+                            {"类型": "卖点", "图片": "详情/19.jpg"},
+                            {"类型": "产品信息", "图片": "详情/20.jpg"},
+                            {"类型": "产品规格", "图片": "详情/21.jpg"},
+                            {"类型": "产品规格", "图片": "详情/22.jpg"},
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            report: dict = {}
+
+            outputs = prepare_ordered_detail_sources(
+                root,
+                plan_path,
+                Path(temp_dir) / "staging",
+                report,
+            )
+
+            self.assertEqual(
+                [item["类型"] for item in report["详情页模块"]["模块顺序"]],
+                ["品牌背书", "KV", "产品信息", "产品规格", "产品规格", "卖点", "卖点"],
+            )
+            self.assertEqual(
+                [path.name for path in outputs],
+                ["01.jpg", "04.jpg", "20.jpg", "21.jpg", "22.jpg", "05.jpg", "19.jpg"],
             )
 
 

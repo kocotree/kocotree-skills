@@ -18,20 +18,10 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 
-def prune_report_files(report_dir: Path, keep: int = 100) -> None:
-    """保留最近的完整报告和对应逐图明细。"""
-    reports = sorted(
-        report_dir.glob("*-report.json"),
-        key=lambda path: (path.stat().st_mtime, path.name),
-        reverse=True,
-    )
-    for old_report in reports[keep:]:
-        image_records_path(old_report).unlink(missing_ok=True)
-        old_report.unlink(missing_ok=True)
-
-
 def image_records_path(report_path: Path) -> Path:
     """返回主报告对应的逐图明细文件路径。"""
+    if report_path.name == "report.json":
+        return report_path.with_name("image-records.jsonl")
     return report_path.with_name(f"{report_artifact_prefix(report_path)}-image-records.jsonl")
 
 

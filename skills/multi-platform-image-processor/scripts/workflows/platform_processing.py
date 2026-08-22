@@ -13,7 +13,7 @@ from common import (
     全部平台,
     平台模板目录名,
 )
-from common.quality_audit import audit_gift_sku_outputs, run_quality_audit
+from common.quality_audit import audit_sku_branch_outputs, run_quality_audit
 from common.color_naming import resolve_color_names
 from platforms.cbme import derive as derive_cbme
 from platforms.fengxiang_aikucun import derive as derive_fengxiang_aikucun
@@ -38,17 +38,29 @@ def default_output_path() -> Path:
     return desktop / "multi-platform-image-processor" / "output"
 
 
-def resolve_source_and_output(source: Path, output_root: Path) -> tuple[Path, Path, str]:
-    """解析产品素材根目录和带产品名的时间戳输出目录。"""
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+def resolve_source_and_output(
+    source: Path,
+    output_root: Path,
+    timestamp: str | None = None,
+) -> tuple[Path, Path, str]:
+    """解析产品素材根目录和带产品名的时间戳输出目录。
+
+    参数：
+        source：数据包目录或产品目录。
+        output_root：本次处理的输出根目录。
+        timestamp：可选的固定交付时间戳。
+    返回值：
+        实际素材目录、产品输出目录和源产品目录名。
+    """
+    output_timestamp = timestamp or datetime.now().strftime("%Y%m%d-%H%M%S")
     if source.name == "数据包":
         product_name = source.parent.name
-        return source, output_root / f"{product_name}_{timestamp}", product_name
+        return source, output_root / f"{product_name}_{output_timestamp}", product_name
     data_pack = source / "数据包"
     if data_pack.is_dir():
-        return data_pack, output_root / f"{source.name}_{timestamp}", source.name
+        return data_pack, output_root / f"{source.name}_{output_timestamp}", source.name
     product_name = source.name
-    return source, output_root / f"{product_name}_{timestamp}", product_name
+    return source, output_root / f"{product_name}_{output_timestamp}", product_name
 
 
 def run_platform_processing(
@@ -61,6 +73,7 @@ def run_platform_processing(
     detail_plan: Path | None = None,
     detail_overrides: dict[Path, Path] | None = None,
     color_name_plan: object | None = None,
+    delivery_timestamp: str | None = None,
 ) -> tuple[int, Path]:
     """处理单个产品并生成六平台图片。
 
@@ -74,10 +87,15 @@ def run_platform_processing(
         detail_plan：Agent 视觉检查生成的详情模块计划路径。
         detail_overrides：原始详情图到临时面料修正版的映射。
         color_name_plan：白底图、透明图相对路径到 SKU 颜色名称的视觉映射。
+        delivery_timestamp：内部暂存与最终交付共用的时间戳。
     返回值：
         退出码和实际输出目录。
     """
-    source, output, source_product_name = resolve_source_and_output(source_arg, output_arg)
+    source, output, source_product_name = resolve_source_and_output(
+        source_arg,
+        output_arg,
+        delivery_timestamp,
+    )
     effective_product_name = product_name.strip() or source_product_name
     report["处理配置"].update(
         {"源目录": str(source), "模板目录": str(template), "输出目录": str(output)}
@@ -120,7 +138,7 @@ def run_platform_processing(
     derive_offsite(source, template, output, report, color_names)
 
     run_quality_audit(report, platform_directories)
-    audit_gift_sku_outputs(source, platform_directories, report)
+    audit_sku_branch_outputs(source, platform_directories, report)
     for key in 全部平台:
         add_platform_result(report, directory_names[key], platform_directories[key])
     exit_code = 0 if not report["失败项"] else 1

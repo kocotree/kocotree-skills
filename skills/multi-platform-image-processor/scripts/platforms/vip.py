@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from common import ensure_dir, add_risk
-from common.color_naming import color_output_name
+from common.color_naming import color_output_relative_path
 from common.detail_page_slice import scale_detail_pages
 from common.image_resize_compress import process_jpg_canvas
-from common.scan_source_pack import get_image_group
+from common.scan_source_pack import get_image_group, resolve_source_path
 from common.transparent_image_fit import process_vip_transparent_image
 
 
@@ -42,10 +42,14 @@ def derive(
     for source in main_sources:
         process_jpg_canvas(source, main_dir / f"{source.stem}.jpg", (1200, 1200), 500 * 1024, report, 平台, "1200主图")
     transparent_dir = ensure_dir(platform_dir / "1200透明图")
-    for source in get_image_group(source_root, "透明图"):
+    transparent_base = resolve_source_path(source_root, "透明图")
+    for source in get_image_group(source_root, "透明图", recursive=True):
+        relative = color_output_relative_path(source, transparent_base, color_names, ".png")
+        output = transparent_dir / relative
+        ensure_dir(output.parent)
         process_vip_transparent_image(
             source,
-            transparent_dir / color_output_name(source, color_names, ".png"),
+            output,
             1200,
             500 * 1024,
             report,

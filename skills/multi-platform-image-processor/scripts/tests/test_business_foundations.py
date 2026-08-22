@@ -11,7 +11,7 @@ import xlwt
 from openpyxl import Workbook
 from PIL import Image
 
-from common.color_naming import resolve_color_names
+from common.color_naming import color_output_relative_path, resolve_color_names
 from common.font_assets import load_font_assets, require_glyphs
 from common.nas_paths import require_accessible_directory, to_unc_path
 from common.product_info_reader import (
@@ -26,6 +26,7 @@ from common.product_matcher import (
     select_bartender_file,
 )
 from common.settings import resolve_business_paths
+from common.scan_source_pack import get_sku800_recursive
 from common.utils import build_platform_directory_names, 平台模板目录名
 
 
@@ -137,6 +138,55 @@ class BusinessSettingsTests(unittest.TestCase):
                 "企鹅团团-浅灰",
             )
 
+    def test_sku_800_is_found_below_business_branches(self) -> None:
+        """验证任意业务分支下的 800 图均能被读取。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            expected = []
+            for relative in (
+                "SKU/款式甲/800/规格一.jpg",
+                "SKU/款式乙/800x800/规格二.jpg",
+            ):
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                Image.new("RGB", (8, 8), "white").save(path)
+                expected.append(path)
+            ignored = root / "SKU/款式甲/1440/规格一.jpg"
+            ignored.parent.mkdir(parents=True)
+            Image.new("RGB", (8, 8), "white").save(ignored)
+
+            self.assertCountEqual(get_sku800_recursive(root), expected)
+
+    def test_unsized_business_branch_images_are_used_as_800(self) -> None:
+        """验证业务分支内没有尺寸目录时图片作为 800 素材。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            expected = root / "SKU/款式甲/规格一.jpg"
+            expected.parent.mkdir(parents=True)
+            Image.new("RGB", (8, 8), "white").save(expected)
+
+            self.assertEqual(get_sku800_recursive(root), [expected])
+
+    def test_branched_color_assets_keep_directory_and_source_name(self) -> None:
+        """验证业务分支颜色素材不依赖 SKU 文件名并保留相对目录。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            sku = root / "SKU/款式甲/800/完整规格名.jpg"
+            white = root / "白底图/款式甲/任意名称.jpg"
+            for path in (sku, white):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                Image.new("RGB", (8, 8), "white").save(path)
+
+            names = resolve_color_names(root, {})
+            relative = color_output_relative_path(
+                white,
+                root / "白底图",
+                names,
+                ".jpg",
+            )
+
+            self.assertEqual(relative, Path("款式甲/任意名称.jpg"))
+
     def test_offsite_template_uses_business_folder_names(self) -> None:
         """验证站外模板只包含最终业务目录名称。"""
         template_root = Path(__file__).resolve().parents[2] / "template" / "站外通用版"
@@ -203,24 +253,36 @@ class ProductInfoTests(unittest.TestCase):
                 self.assertEqual(len(records), 1)
                 self.assertTrue(records[0].get("中文面料"))
 
-    def test_multiple_excel_records_block_automatic_selection(self) -> None:
-        """验证同货号存在多份产品信息时不自动猜测。"""
+    def test_multiple_excel_records_use_one_stable_source(self) -> None:
+        """验证同货号多份产品信息按稳定顺序选择一个统一来源。"""
         with TemporaryDirectory() as temp_dir_value:
             root = Path(temp_dir_value)
-            self._write_openxml(root / "KQ26143-A.xlsx")
-            self._write_openxml(root / "KQ26143-B.xlsx")
+            second = root / "KQ26143-B.xlsx"
+            first = root / "KQ26143-A.xlsx"
+            self._write_openxml(second)
+            self._write_openxml(first)
 
             result = find_product_info(root, "KQ26143", "儿童长裤")
 
-            self.assertIsNone(result.selected)
+            self.assertIsNotNone(result.selected)
+            self.assertEqual(result.selected.file, first)
             self.assertEqual(len(result.candidates), 2)
-            self.assertIn("多个", result.reason)
+            self.assertIn("整次任务", result.reason)
 
     def test_bilingual_cell_returns_only_chinese_material(self) -> None:
         """验证中英文同单元格时只提取英文段之前的中文原文。"""
         value = "成分：98.3%聚酯纤维\n1.7%氨纶\ncomponent:98.3%polyester\n1.7%spandex"
 
         self.assertEqual(extract_chinese_material(value), "成分：98.3%聚酯纤维\n1.7%氨纶")
+
+    def test_chinese_material_keeps_embedded_latin_symbols(self) -> None:
+        """验证中文面料中的化学符号不会被误判为英文段。"""
+        value = "杯身内胆：06Cr17Ni12Mo2(内胆S316)\n螺牙盖/吸管：聚丙烯（PP）\nMaterial: stainless steel"
+
+        self.assertEqual(
+            extract_chinese_material(value),
+            "杯身内胆：06Cr17Ni12Mo2(内胆S316)\n螺牙盖/吸管：聚丙烯（PP）",
+        )
 
     def test_specification_and_size_remain_separate(self) -> None:
         """验证真实产品表中的规格与尺码分别保留。"""

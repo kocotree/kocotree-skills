@@ -17,11 +17,12 @@ from PIL import Image
 
 from .utils import add_failure, add_review_suggestion, add_risk, ensure_dir
 from .image_resize_compress import fit_into_canvas, open_image, save_jpg_under
+from .run_workspace import TEXT_REMOVAL_CANDIDATES_ENV
 from .sku_card_crop import (
     CardCropError,
     build_model_input,
     composite_editable_regions,
-    detect_right_card_plan,
+    detect_label_plan,
     normalize_model_output,
     validate_protected_regions,
 )
@@ -32,7 +33,7 @@ TEXT_REMOVAL_MAX_ATTEMPTS = 2
 TEXT2IMAGE_GITHUB_ZIP_URL = "https://github.com/ranjingya/kocotree-skills/archive/refs/heads/master.zip"
 TEXT2IMAGE_GITHUB_SKILL_PATH = Path("skills") / "text2image"
 TEMP_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
-TEXT_REMOVAL_PROMPT = "Edit only the existing text inside the colored decorative label on the right-side product card. Remove the label text and fill only the removed character strokes with the surrounding original label background. Keep the input aspect ratio, composition, card position, label color, gradient, texture, outline, rounded corners, curved edges, shadows, product image, hand, background, canvas edges, and image corners unchanged. Do not create, remove, move, resize, recolor, or redraw any block, border, label, object, logo, symbol, number, or decoration. Do not modify text or logos printed on the product itself. If no removable label text is present or the target is uncertain, return the input unchanged."
+TEXT_REMOVAL_PROMPT = "Edit only the existing text inside the detected colored decorative label. Remove the label text and fill only the removed character strokes with the surrounding original label background. Keep the input aspect ratio, composition, card position, label color, gradient, texture, outline, rounded corners, curved edges, shadows, product image, hand, background, canvas edges, and image corners unchanged. Do not create, remove, move, resize, recolor, or redraw any block, border, label, object, logo, symbol, number, or decoration. Do not modify text or logos printed on the product itself. If no removable label text is present or the target is uncertain, return the input unchanged."
 
 logger = logging.getLogger(__name__)
 
@@ -279,7 +280,12 @@ def ensure_text2image_ready() -> tuple[bool, str]:
 
 
 def get_text_removal_temp_dir() -> Path:
-    return ensure_dir(Path(__file__).resolve().parents[1] / "output" / "image-without-text-tmp")
+    """返回当前运行的站外 SKU 去字候选图目录。"""
+    configured = os.environ.get(TEXT_REMOVAL_CANDIDATES_ENV, "").strip()
+    if configured:
+        return ensure_dir(Path(configured).expanduser().resolve())
+    fallback = Path(__file__).resolve().parents[1] / "output" / "runs" / "unscoped" / "candidates"
+    return ensure_dir(fallback)
 
 
 def prune_temp_images(temp_dir: Path, keep: int = 100) -> None:
@@ -302,8 +308,8 @@ def process_offsite_sku_text_removal(
 ) -> Path | None:
     """处理单张站外 SKU 标签去字并按原坐标安全回贴。
 
-    功能说明：识别右侧商品卡片并向左增加安全余量，将右侧纵向裁片放入
-    与原图同尺寸的模型输入画布；模型返回后校验宽高比和受保护区域，
+    功能说明：识别右侧商品卡片或底部横向标签，将标签裁片放入与原图同尺寸
+    的模型输入画布；模型返回后校验宽高比和受保护区域，
     仅将彩色标签内部区域贴回原图。
 
     参数：
@@ -322,27 +328,28 @@ def process_offsite_sku_text_removal(
         source_image = open_image(source)
         logger.info("开始处理站外SKU去字：%s", source)
         try:
-            plan = detect_right_card_plan(source_image)
+            plan = detect_label_plan(source_image)
         except CardCropError as exc:
-            logger.warning("商品卡片识别失败，按原图输出：%s，原因：%s", source, exc)
-            add_risk(report, "商品卡片或彩色标签识别失败，已按原图压缩输出",
+            logger.warning("彩色标签识别失败，按原图输出：%s，原因：%s", source, exc)
+            add_risk(report, "彩色标签识别失败，已按原图压缩输出",
                      源文件=str(source), 原因=str(exc))
             image = source_image
-            actions = ["商品卡片或彩色标签识别失败，按原图压缩输出"]
+            actions = ["彩色标签识别失败，按原图压缩输出"]
         else:
             logger.info(
-                "商品卡片识别完成：card_x=%d-%d，crop_x=%d-%d，标签数=%d",
-                plan.card_left,
-                plan.card_right - 1,
+                "彩色标签识别完成：layout=%s crop=(%d,%d,%d,%d) 标签数=%d",
+                plan.layout,
                 plan.crop_left,
-                source_image.width - 1,
+                plan.crop_top,
+                plan.crop_right,
+                plan.crop_bottom,
                 len(plan.label_boxes),
             )
             model_input = build_model_input(source_image, plan)
             model_input_path = temp_dir / f"{source.stem}-{uuid4().hex}-input.png"
             model_input.save(model_input_path, format="PNG")
             actions = [
-                f"识别右侧商品卡片，左侧安全余量{plan.card_left - plan.crop_left}px",
+                f"识别{plan.layout}，裁片{plan.crop_box}",
                 f"模型输入尺寸{model_input.width}x{model_input.height}",
             ]
             image = None
@@ -385,7 +392,7 @@ def process_offsite_sku_text_removal(
                         f"第{attempt}次模型去字成功：{message}",
                         f"模型输出恢复到{model_input.width}x{model_input.height}",
                         (
-                            "右侧受保护区域差异验收通过："
+                            "标签裁片受保护区域差异验收通过："
                             f"平均通道差异{audit['平均通道差异']}/"
                             f"{audit['平均通道差异阈值']}，"
                             f"明显变化比例{audit['明显变化比例']}/"

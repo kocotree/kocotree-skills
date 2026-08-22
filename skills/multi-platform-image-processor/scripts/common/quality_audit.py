@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .scan_source_pack import get_sku800_recursive, has_gift_sku_branches, resolve_sku_root
+from .scan_source_pack import (
+    get_sku800_recursive,
+    has_gift_sku_branches,
+    has_sku_business_branches,
+    resolve_sku_root,
+)
 from .utils import list_images, image_info, add_failure, add_warning, 平台目录名
 
 
@@ -33,15 +38,15 @@ def run_quality_audit(
             _audit_offsite(platform_directories[platform], report)
 
 
-def audit_gift_sku_outputs(
+def audit_sku_branch_outputs(
     source_root: Path,
     platform_directories: dict[str, Path],
     report: dict,
 ) -> None:
-    """核对赠品 SKU 的平台分支和图片数量。
+    """核对 SKU 业务分支的平台目录和图片数量。
 
-    功能说明：验证天猫完整保留源 SKU 相对路径，蜂享家＋爱库存只保留
-    两个分支的 800 图，并确认站外输出记录全部来自无赠品 800 图。
+    功能说明：验证天猫完整保留源 SKU 相对路径，蜂享家＋爱库存保留
+    各业务分支的 800 图；赠品结构同时确认站外只使用无赠品分支。
     参数：
         source_root：产品素材根目录。
         platform_directories：平台键与实际输出目录映射。
@@ -49,7 +54,7 @@ def audit_gift_sku_outputs(
     返回值：
         无返回值。
     """
-    if not has_gift_sku_branches(source_root):
+    if not has_sku_business_branches(source_root):
         return
 
     sku_root = resolve_sku_root(source_root)
@@ -58,19 +63,21 @@ def audit_gift_sku_outputs(
     _check_relative_image_set(
         {path.relative_to(sku_root).with_suffix(".jpg") for path in list_images(sku_root, recursive=True)},
         tmall_root,
-        "天猫赠品SKU目录与源目录不一致",
+        "天猫SKU业务分支与源目录不一致",
         report,
     )
     _check_relative_image_set(
         {path.relative_to(sku_root).with_suffix(".jpg") for path in get_sku800_recursive(source_root)},
         fengxiang_root,
-        "蜂享家＋爱库存赠品SKU目录与源目录不一致",
+        "蜂享家＋爱库存SKU业务分支与源目录不一致",
         report,
     )
     for size_name in ("800", "1440"):
         if (tmall_root / size_name).exists():
-            add_failure(report, "天猫赠品SKU存在多余顶层尺寸目录", 目录=str(tmall_root / size_name))
+            add_failure(report, "天猫SKU业务分支存在多余顶层尺寸目录", 目录=str(tmall_root / size_name))
 
+    if not has_gift_sku_branches(source_root):
+        return
     invalid_records = []
     for record in report.get("图片记录", []):
         if record.get("平台") != "站外通用版" or record.get("用途") != "sku":
@@ -167,7 +174,7 @@ def _audit_cbme(root: Path, report: dict) -> None:
 def _audit_jd(root: Path, report: dict) -> None:
     for path in list_images(root, recursive=True):
         _check_file_size(path, 500, report)
-    for path in list_images(root / "透明图"):
+    for path in list_images(root / "透明图", recursive=True):
         _check_dimensions(path, 800, 800, report, "京东透明图尺寸不符合800x800")
         info = image_info(path)
         if not info.get("有透明通道"):
@@ -180,7 +187,7 @@ def _audit_vip(root: Path, report: dict) -> None:
         _check_file_size(path, 500, report)
     for path in list_images(root / "1200主图"):
         _check_dimensions(path, 1200, 1200, report, "唯品会主图尺寸不符合1200x1200")
-    for path in list_images(root / "1200透明图"):
+    for path in list_images(root / "1200透明图", recursive=True):
         info = image_info(path)
         if 1200 not in (info.get("尺寸") or []):
             add_warning(report, "唯品会透明图没有任一边为1200px", 文件=str(path), 实际尺寸=info.get("尺寸"))
@@ -206,7 +213,7 @@ def _audit_fengxiang(root: Path, report: dict) -> None:
 def _audit_offsite(root: Path, report: dict) -> None:
     for path in list_images(root, recursive=True):
         _check_file_size(path, 500, report)
-    for path in list_images(root / "sku"):
+    for path in list_images(root / "sku", recursive=True):
         _check_dimensions(path, 800, 800, report, "站外SKU去字图尺寸不符合800x800")
         info = image_info(path)
         if info.get("格式") != "JPEG":

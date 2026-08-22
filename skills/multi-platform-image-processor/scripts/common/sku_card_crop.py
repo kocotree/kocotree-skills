@@ -16,25 +16,28 @@ from PIL import Image
 
 
 class CardCropError(RuntimeError):
-    """右侧商品卡片或彩色标签无法可靠识别。"""
+    """商品卡片或彩色标签无法可靠识别。"""
 
 
 @dataclass(frozen=True)
 class CardCropPlan:
-    """右侧商品卡片裁切计划。"""
+    """SKU 彩色标签裁切计划。"""
 
     card_left: int
     card_right: int
     crop_left: int
+    crop_top: int
+    crop_right: int
+    crop_bottom: int
     scan_y: int
     image_size: tuple[int, int]
     label_boxes: tuple[tuple[int, int, int, int], ...]
+    layout: str
 
     @property
     def crop_box(self) -> tuple[int, int, int, int]:
-        """返回纵向裁片在原图中的坐标。"""
-        width, height = self.image_size
-        return self.crop_left, 0, width, height
+        """返回模型裁片在原图中的坐标。"""
+        return self.crop_left, self.crop_top, self.crop_right, self.crop_bottom
 
     @property
     def editable_boxes(self) -> tuple[tuple[int, int, int, int], ...]:
@@ -84,27 +87,107 @@ def detect_right_card_plan(
         card_left=card_left,
         card_right=card_right,
         crop_left=crop_left,
+        crop_top=0,
+        crop_right=width,
+        crop_bottom=height,
         scan_y=scan_y,
         image_size=rgb.size,
         label_boxes=tuple(label_boxes),
+        layout="右侧卡片",
     )
 
 
+def detect_bottom_label_plan(image: Image.Image) -> CardCropPlan:
+    """识别画布底部横向彩色标签。
+
+    功能说明：扫描图片下半部，定位延伸至底边且横跨大部分画布的彩色标签，
+    并保留标签上方少量上下文作为模型输入。
+
+    参数：
+        image：原始 SKU 图片，用于识别底部标签。
+    返回值：
+        CardCropPlan，包含底部标签、模型裁片和原图尺寸。
+    """
+    rgb = image.convert("RGB")
+    width, height = rgb.size
+    if width < 100 or height < 100:
+        raise CardCropError(f"图片尺寸过小，无法识别底部标签：{width}x{height}")
+
+    active_rows: list[int] = []
+    colored_by_row: dict[int, list[int]] = {}
+    for y in range(round(height * 0.50), height):
+        colored_x = []
+        for x in range(width):
+            red, green, blue = rgb.getpixel((x, y))
+            if max(red, green, blue) - min(red, green, blue) >= 彩色色差阈值:
+                colored_x.append(x)
+        if len(colored_x) >= round(width * 0.20):
+            active_rows.append(y)
+            colored_by_row[y] = colored_x
+
+    candidates = []
+    for top, bottom_inclusive in _group_contiguous_values(active_rows, max_gap=8):
+        bottom = bottom_inclusive + 1
+        xs = []
+        for y in range(top, bottom):
+            xs.extend(colored_by_row.get(y, []))
+        if not xs:
+            continue
+        left = min(xs)
+        right = max(xs) + 1
+        if (
+            bottom >= round(height * 0.98)
+            and right - left >= round(width * 0.75)
+            and bottom - top >= round(height * 0.08)
+        ):
+            candidates.append((bottom - top, left, top, right, bottom))
+    if not candidates:
+        raise CardCropError("未可靠识别到延伸至画布底边的横向彩色标签")
+
+    _, left, top, right, bottom = max(candidates)
+    padding = max(16, round(height * 0.04))
+    return CardCropPlan(
+        card_left=left,
+        card_right=right,
+        crop_left=0,
+        crop_top=max(0, top - padding),
+        crop_right=width,
+        crop_bottom=height,
+        scan_y=top,
+        image_size=rgb.size,
+        label_boxes=((left, top, right, bottom),),
+        layout="底部标签",
+    )
+
+
+def detect_label_plan(image: Image.Image) -> CardCropPlan:
+    """按右侧卡片、底部标签的顺序识别可编辑区域。"""
+    try:
+        return detect_right_card_plan(image)
+    except CardCropError as right_error:
+        try:
+            return detect_bottom_label_plan(image)
+        except CardCropError as bottom_error:
+            raise CardCropError(
+                f"右侧卡片识别失败：{right_error}；底部标签识别失败：{bottom_error}"
+            ) from bottom_error
+
+
 def build_model_input(image: Image.Image, plan: CardCropPlan) -> Image.Image:
-    """构建与原图同尺寸、仅保留右侧纵向裁片的模型输入图。
+    """构建与原图同尺寸、仅保留标签裁片的模型输入图。
 
     参数：
         image：原始 SKU 图片。
-        plan：右侧商品卡片裁切计划。
+        plan：彩色标签裁切计划。
     返回值：
-        与原图宽高一致的 RGB 图片，左侧为白色，右侧为原始裁片。
+        与原图宽高一致的 RGB 图片，裁片外为白色。
     """
     rgb = image.convert("RGB")
     if rgb.size != plan.image_size:
         raise CardCropError(f"裁切计划尺寸与原图不一致：{plan.image_size} != {rgb.size}")
     canvas = Image.new("RGB", rgb.size, (255, 255, 255))
     crop = rgb.crop(plan.crop_box)
-    canvas.paste(crop, (plan.crop_left, 0))
+    canvas.paste(crop, (plan.crop_left, plan.crop_top))
     return canvas
 
 
@@ -138,12 +221,12 @@ def validate_protected_regions(
     max_changed_ratio: float = 受保护区明显变化比例阈值,
     max_unexpected_edit_ratio: float = 标签内部非文字变化比例阈值,
 ) -> dict[str, float | bool | int]:
-    """检查模型是否大幅修改标签文字区域以外的右侧裁片。
+    """检查模型是否大幅修改标签文字区域以外的裁片。
 
     参数：
         model_input：发送给模型的同尺寸输入画布。
         generated：已恢复到输入尺寸的模型结果。
-        plan：右侧商品卡片裁切计划。
+        plan：彩色标签裁切计划。
         max_mean_difference：受保护区域允许的平均通道差异上限。
         max_changed_ratio：受保护区域允许的明显变化像素比例上限。
         max_unexpected_edit_ratio：标签内部非文字底图发生明显变化的比例上限。
@@ -163,10 +246,8 @@ def validate_protected_regions(
     changed_pixels = 0
     editable_pixels = 0
     unexpected_edit_pixels = 0
-    width, height = plan.image_size
-
-    for y in range(height):
-        for x in range(plan.crop_left, width):
+    for y in range(plan.crop_top, plan.crop_bottom):
+        for x in range(plan.crop_left, plan.crop_right):
             if _inside_any_box(x, y, editable_boxes):
                 continue
             source_pixel = source_pixels[x, y]
@@ -206,6 +287,7 @@ def validate_protected_regions(
         "标签内部非文字变化比例": round(unexpected_edit_ratio, 6),
         "标签内部非文字变化比例阈值": max_unexpected_edit_ratio,
         "比较起始X": plan.crop_left,
+        "比较起始Y": plan.crop_top,
     }
 
 
@@ -219,7 +301,7 @@ def composite_editable_regions(
     参数：
         original：原始 SKU 图片，作为最终输出底图。
         generated：通过验收且已恢复尺寸的模型结果。
-        plan：右侧商品卡片裁切计划。
+        plan：彩色标签裁切计划。
     返回值：
         与原图尺寸一致、仅标签内部来自模型结果的 RGB 图片。
     """

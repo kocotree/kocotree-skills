@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -14,9 +15,11 @@ from common.delivery_quality_audit import audit_business_images
 from common.material_editor import verify_non_target_unchanged
 from common.product_info_reader import ProductInfoRecord
 from common.product_matcher import MatchResult
+from common.run_workspace import RunWorkspace, prune_internal_runs, publish_delivery
 from common.utils import new_report
 from common.write_report import write_report
 from workflows.full_package import run_full_workflow
+from workflows.certificate_assets import _resolve_certificate_fabric_settings
 from workflows.material_correction import apply_material_plan
 from workflows.platform_processing import resolve_source_and_output, run_platform_processing
 
@@ -54,6 +57,63 @@ class UnifiedEntryTests(unittest.TestCase):
         self.assertEqual(resolved_source, source)
         self.assertEqual(product_name, source.name)
         self.assertRegex(output.name, r"^KQ26193 小跃动自在裤_\d{8}-\d{6}$")
+
+    def test_fixed_timestamp_is_used_for_delivery_name(self) -> None:
+        """验证内部暂存和最终交付使用同一个固定时间戳。"""
+        source = Path("KQ26193 小跃动自在裤")
+        _, output, _ = resolve_source_and_output(
+            source,
+            Path("输出"),
+            "20260818-141603",
+        )
+
+        self.assertEqual(output.name, "KQ26193 小跃动自在裤_20260818-141603")
+
+
+class RunWorkspaceTests(unittest.TestCase):
+    """验证内部运行区发布和容量清理。"""
+
+    def test_publish_delivery_leaves_only_final_product(self) -> None:
+        """验证暂存产品包整体发布后删除暂存目录。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            staging_product = root / "运行" / "staging" / "产品_20260818-141603"
+            for platform in (
+                "天猫通用版",
+                "CBME",
+                "蜂享家＋爱库存",
+                "产品-京东",
+                "唯品会",
+                "站外通用版",
+            ):
+                (staging_product / platform).mkdir(parents=True)
+            output_root = root / "用户输出"
+
+            delivery = publish_delivery(staging_product, output_root)
+
+            self.assertEqual(delivery, output_root / "产品_20260818-141603")
+            self.assertTrue(delivery.is_dir())
+            self.assertFalse((root / "运行" / "staging").exists())
+            self.assertEqual([path.name for path in output_root.iterdir()], [delivery.name])
+
+    def test_prune_internal_runs_removes_oldest_whole_run(self) -> None:
+        """验证超过容量时删除最旧运行且保护当前运行。"""
+        with TemporaryDirectory() as temp_dir_value:
+            runs_root = Path(temp_dir_value)
+            old = runs_root / "旧运行"
+            recent = runs_root / "新运行"
+            active = runs_root / "当前运行"
+            for index, path in enumerate((old, recent, active), start=1):
+                path.mkdir()
+                (path / "artifact.bin").write_bytes(b"123456")
+                os.utime(path, (index, index))
+
+            removed = prune_internal_runs(runs_root, max_bytes=12, protected=active)
+
+            self.assertEqual(removed, [old])
+            self.assertFalse(old.exists())
+            self.assertTrue(recent.is_dir())
+            self.assertTrue(active.is_dir())
 
 
 class WorkflowReportTests(unittest.TestCase):
@@ -109,8 +169,60 @@ class WorkflowReportTests(unittest.TestCase):
             self.assertTrue(any("超过500KB" in item["信息"] for item in report["失败项"]))
 
 
+class CertificateFabricSettingsTests(unittest.TestCase):
+    """验证合格证根据原内容完整性决定面料处理方式。"""
+
+    def test_complete_original_certificate_keeps_existing_material(self) -> None:
+        """验证原合格证面料完整时不新增 Excel 面料。"""
+        text, anchor, font_size = _resolve_certificate_fabric_settings(
+            {"合格证面料完整": True},
+            "杯身内胆：06Cr17Ni12Mo2(内胆S316)",
+        )
+
+        self.assertEqual(text, "")
+        self.assertIsNone(anchor)
+        self.assertEqual(font_size, 0)
+
+    def test_incomplete_original_certificate_uses_excel_material(self) -> None:
+        """验证原合格证面料不完整时使用 Excel 原文和视觉定位。"""
+        text, anchor, font_size = _resolve_certificate_fabric_settings(
+            {
+                "合格证面料完整": False,
+                "合格证面料锚点": [320, 180],
+                "合格证面料字号": 20,
+            },
+            "杯身内胆：06Cr17Ni12Mo2(内胆S316)",
+        )
+
+        self.assertEqual(text, "杯身内胆：06Cr17Ni12Mo2(内胆S316)")
+        self.assertEqual(anchor, (320, 180))
+        self.assertEqual(font_size, 20)
+
+    def test_missing_completeness_result_is_rejected(self) -> None:
+        """验证缺少原合格证面料结论时不能盲目新增文字。"""
+        with self.assertRaisesRegex(ValueError, "完整性结论"):
+            _resolve_certificate_fabric_settings({}, "100%聚酯纤维")
+
+
 class MaterialPlanTests(unittest.TestCase):
     """验证 Agent 视觉计划驱动局部面料修正。"""
+
+    def test_empty_material_regions_records_completed_inspection(self) -> None:
+        """验证视觉确认无目标字段时仍能完成面料检查。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            plan = root / "plan.json"
+            plan.write_text(json.dumps({"面料区域": []}, ensure_ascii=False), encoding="utf-8")
+            report = new_report(root, None, root)
+
+            replacements = apply_material_plan(root, "100%聚酯纤维", plan, root / "临时修正版", report)
+
+            self.assertEqual(replacements, {})
+            self.assertFalse(report["失败项"])
+            self.assertEqual(
+                report["面料检查"]["检查项"][0]["检查结论"],
+                "详情页未发现需要重绘的面料字段",
+            )
 
     def test_material_plan_outputs_correction_without_changing_source(self) -> None:
         """验证 JPEG 面料修正版使用无损临时图且原图保持不变。"""
@@ -232,7 +344,20 @@ class FullWorkflowTests(unittest.TestCase):
             source = root / "产品" / "数据包"
             source.mkdir(parents=True)
             output = root / "输出"
-            report_path = root / "full-report.json"
+            run_root = root / "内部运行" / "20260818-141603-KQ26143"
+            workspace = RunWorkspace(
+                run_id="20260818-141603-KQ26143",
+                timestamp="20260818-141603",
+                root=run_root,
+                staging_root=run_root / "staging",
+                report_path=run_root / "report.json",
+                log_path=run_root / "run.log",
+                candidates_dir=run_root / "candidates",
+            )
+            workspace.staging_root.mkdir(parents=True)
+            workspace.candidates_dir.mkdir()
+            staging_product = workspace.staging_root / "产品_20260818-141603"
+            staging_product.mkdir()
             record = ProductInfoRecord(
                 root / "KQ26143.xlsx",
                 "产品资料",
@@ -252,9 +377,11 @@ class FullWorkflowTests(unittest.TestCase):
                 material_plan="plan.json",
             )
             with patch(
-                "workflows.full_package.default_business_report_path",
-                return_value=report_path,
-            ), patch("workflows.full_package.resolve_business_paths") as resolve_paths, patch(
+                "workflows.full_package.create_run_workspace",
+                return_value=workspace,
+            ), patch("workflows.full_package.prune_internal_runs"), patch(
+                "workflows.full_package.resolve_business_paths",
+            ) as resolve_paths, patch(
                 "workflows.full_package.require_accessible_directory",
                 side_effect=[root, root],
             ), patch(
@@ -265,7 +392,7 @@ class FullWorkflowTests(unittest.TestCase):
                 return_value={},
             ) as material, patch(
                 "workflows.full_package.run_platform_processing",
-                return_value=(0, output / "产品"),
+                return_value=(0, staging_product),
             ) as platform, patch(
                 "workflows.full_package.generate_business_images",
                 return_value=True,
@@ -280,15 +407,21 @@ class FullWorkflowTests(unittest.TestCase):
             self.assertEqual(platform.call_args.kwargs["product_code"], "KQ26143")
             self.assertEqual(platform.call_args.kwargs["product_name"], "儿童长裤")
             self.assertEqual(platform.call_args.args[0], source.resolve())
+            self.assertEqual(platform.call_args.args[2], workspace.staging_root)
             self.assertEqual(platform.call_args.kwargs["detail_overrides"], {})
+            self.assertEqual(platform.call_args.kwargs["delivery_timestamp"], workspace.timestamp)
             business.assert_called_once()
             self.assertEqual(business.call_args.kwargs["product_name"], "儿童长裤")
             self.assertEqual(business.call_args.kwargs["representative_color"], "蓝色")
             self.assertEqual(business.call_args.kwargs["fabric_text"], "棉95%氨纶5%")
             self.assertEqual(business.call_args.kwargs["content_root"], source.resolve())
             self.assertFalse(material.call_args.args[3].exists())
-            data = json.loads(report_path.read_text(encoding="utf-8"))
+            delivery = output / "产品_20260818-141603"
+            self.assertTrue(delivery.is_dir())
+            self.assertFalse(workspace.staging_root.exists())
+            data = json.loads(workspace.report_path.read_text(encoding="utf-8"))
             self.assertEqual(data["工作流"]["完成状态"], "完成")
+            self.assertEqual(data["路径"]["最终输出"], str(delivery))
 
 
 if __name__ == "__main__":
