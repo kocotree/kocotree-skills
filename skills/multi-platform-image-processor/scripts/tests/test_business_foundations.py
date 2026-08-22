@@ -253,18 +253,21 @@ class ProductInfoTests(unittest.TestCase):
                 self.assertEqual(len(records), 1)
                 self.assertTrue(records[0].get("中文面料"))
 
-    def test_multiple_excel_records_block_automatic_selection(self) -> None:
-        """验证同货号存在多份产品信息时不自动猜测。"""
+    def test_multiple_excel_records_use_one_stable_source(self) -> None:
+        """验证同货号多份产品信息按稳定顺序选择一个统一来源。"""
         with TemporaryDirectory() as temp_dir_value:
             root = Path(temp_dir_value)
-            self._write_openxml(root / "KQ26143-A.xlsx")
-            self._write_openxml(root / "KQ26143-B.xlsx")
+            second = root / "KQ26143-B.xlsx"
+            first = root / "KQ26143-A.xlsx"
+            self._write_openxml(second)
+            self._write_openxml(first)
 
             result = find_product_info(root, "KQ26143", "儿童长裤")
 
-            self.assertIsNone(result.selected)
+            self.assertIsNotNone(result.selected)
+            self.assertEqual(result.selected.file, first)
             self.assertEqual(len(result.candidates), 2)
-            self.assertIn("多个", result.reason)
+            self.assertIn("整次任务", result.reason)
 
     def test_bilingual_cell_returns_only_chinese_material(self) -> None:
         """验证中英文同单元格时只提取英文段之前的中文原文。"""

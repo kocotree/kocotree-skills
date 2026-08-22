@@ -156,14 +156,14 @@ def find_product_info(
     product_code: str,
     product_name: str = "",
 ) -> MatchResult:
-    """在产品信息目录中查找唯一产品记录。
+    """在产品信息目录中选择一条产品记录。
 
     参数：
         root：产品信息目录。
         product_code：需要精确匹配的产品货号。
         product_name：用于复核的产品名称。
     返回值：
-        唯一产品记录或候选冲突信息。
+        选中的产品记录、全部匹配候选和选择说明。
     """
     matches: list[ProductInfoRecord] = []
     target_code = normalize_identity(product_code)
@@ -207,8 +207,26 @@ def find_product_info(
                 if not path.name.startswith("~$") and path not in named_files
             ]
             scan_groups.append(fallback)
-    if len(matches) == 1:
-        return MatchResult(matches[0], list(matches), "产品信息记录唯一")
     if not matches:
         return MatchResult(None, [], "没有找到产品货号精确匹配记录")
-    return MatchResult(None, list(matches), "同一产品匹配到多个 Excel 记录")
+    ordered_matches = sorted(
+        matches,
+        key=lambda record: (
+            record.file.as_posix().casefold(),
+            record.sheet.casefold(),
+            record.row,
+        ),
+    )
+    selected = ordered_matches[0]
+    if len(ordered_matches) == 1:
+        return MatchResult(selected, ordered_matches, "产品信息记录唯一")
+    logger.info(
+        "同一产品匹配到多个产品信息记录，整次任务使用固定记录 selected=%r candidates=%d",
+        str(selected.file),
+        len(ordered_matches),
+    )
+    return MatchResult(
+        selected,
+        ordered_matches,
+        "同一产品存在多个产品信息记录，按稳定顺序选择一条并用于整次任务",
+    )
