@@ -76,6 +76,14 @@
       "suggestion": "结合报告结论改为“符合标准”。"
     },
     {
+      "id": "tmall-supermarket-must-have",
+      "platforms": ["猫超"],
+      "categories": ["*"],
+      "terms": ["必备"],
+      "rule_type": "prohibited",
+      "suggestion": "删除“必备”表述。"
+    },
+    {
       "id": "public-welfare-brand",
       "platforms": ["拼多多"],
       "categories": ["*"],
