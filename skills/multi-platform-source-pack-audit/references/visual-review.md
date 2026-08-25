@@ -69,4 +69,4 @@ uv run python .\validate_visual_review.py ".\work\<任务标识>\inventory.csv" 
 - 文字专项完成数等于含文字图片数乘以 4；
 - 已确认问题包含问题摘要和证据路径。
 
-`visual-review-summary.json` 的 `valid` 为 `true` 后，视觉复核达到报告交付条件。文件中的 `stats` 用于填写报告覆盖数量，`errors` 用于定位未完成字段。
+`visual-review-summary.json` 的 `valid` 为 `true` 表示视觉复核部分完成。最终报告仍以 `validate_audit_completion.py` 的完整审核校验结果为准。文件中的 `stats` 用于填写报告覆盖数量，`errors` 用于定位未完成字段。

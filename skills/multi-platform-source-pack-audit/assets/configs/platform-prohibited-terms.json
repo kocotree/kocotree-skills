@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "platforms": [
+    "京东自营",
+    "爱库存",
+    "蜂享家",
+    "抖音达人",
+    "快手",
+    "唯品会",
+    "猫超",
+    "拼多多"
+  ],
+  "rules": [
+    {
+      "id": "authority",
+      "platforms": ["京东自营", "蜂享家", "唯品会", "猫超", "拼多多"],
+      "categories": ["*"],
+      "terms": ["权威"],
+      "rule_type": "replace",
+      "suggestion": "结合完整语境改为“专业”或删除。"
+    },
+    {
+      "id": "competitor-comparison",
+      "platforms": ["京东自营", "拼多多"],
+      "categories": ["*"],
+      "terms": ["其他家", "其他品牌"],
+      "rule_type": "replace",
+      "suggestion": "改为“普通”或删除商业拉踩表达。"
+    },
+    {
+      "id": "gift-claims",
+      "platforms": ["京东自营", "唯品会", "猫超", "拼多多"],
+      "categories": ["*"],
+      "terms": ["赠", "送"],
+      "rule_type": "context_review",
+      "suggestion": "核对完整语境，必要时改为“下单即享”或删除。"
+    },
+    {
+      "id": "absolute-ranking",
+      "platforms": ["京东自营", "蜂享家", "快手", "唯品会", "拼多多"],
+      "categories": ["*"],
+      "terms": ["第一", "首", "TOP1", "NO.1", "全网第一"],
+      "rule_type": "prohibited",
+      "suggestion": "删除绝对化或无证明排名表述。"
+    },
+    {
+      "id": "exaggerated-sales",
+      "platforms": ["京东自营", "唯品会"],
+      "categories": ["*"],
+      "terms": ["1亿妈妈", "97W+妈妈"],
+      "rule_type": "prohibited",
+      "suggestion": "删除缺少可靠依据的夸大数据。"
+    },
+    {
+      "id": "national-level",
+      "platforms": ["京东自营", "蜂享家"],
+      "categories": ["*", "服饰类"],
+      "terms": ["国家级"],
+      "rule_type": "prohibited",
+      "suggestion": "删除“国家级”表述。"
+    },
+    {
+      "id": "return-commitment",
+      "platforms": ["猫超", "拼多多"],
+      "categories": ["*"],
+      "terms": ["7天无理由退货"],
+      "rule_type": "prohibited",
+      "suggestion": "删除退货承诺文案。"
+    },
+    {
+      "id": "far-exceeds-standard",
+      "platforms": ["猫超"],
+      "categories": ["*"],
+      "terms": ["远超国标"],
+      "rule_type": "replace",
+      "suggestion": "结合报告结论改为“符合标准”。"
+    },
+    {
+      "id": "public-welfare-brand",
+      "platforms": ["拼多多"],
+      "categories": ["*"],
+      "terms": ["公益品牌"],
+      "rule_type": "prohibited",
+      "suggestion": "删除“公益品牌”表述。"
+    },
+    {
+      "id": "fearless",
+      "platforms": ["拼多多"],
+      "categories": ["服饰类"],
+      "terms": ["无惧"],
+      "rule_type": "prohibited",
+      "suggestion": "删除“无惧”表述。"
+    },
+    {
+      "id": "fluorescent-sensitive",
+      "platforms": ["京东自营"],
+      "categories": ["服饰类"],
+      "terms": ["荧光剂", "荧光", "致敏"],
+      "rule_type": "prohibited",
+      "suggestion": "删除对应表述。"
+    },
+    {
+      "id": "eye-protection-claims",
+      "platforms": ["京东自营"],
+      "categories": ["太阳镜", "泳镜"],
+      "terms": ["防眩晕", "不伤眼", "保护视力", "不累眼"],
+      "rule_type": "replace",
+      "suggestion": "按平台规则调整或删除眼部功效表述。"
+    },
+    {
+      "id": "cooling-claim",
+      "platforms": ["京东自营"],
+      "categories": ["防晒帽"],
+      "terms": ["降温"],
+      "rule_type": "replace",
+      "suggestion": "改为“可降”“清凉”“凉爽”等允许表述。"
+    },
+    {
+      "id": "thermal-claims",
+      "platforms": ["京东自营"],
+      "categories": ["冬款"],
+      "terms": ["蓄热", "调温", "升温"],
+      "rule_type": "replace",
+      "suggestion": "按平台规则改为蓄暖、加温或温升等允许表述。"
+    },
+    {
+      "id": "shoe-safety-claims",
+      "platforms": ["京东自营"],
+      "categories": ["鞋子"],
+      "terms": ["防滑", "不累脚"],
+      "rule_type": "requires_evidence",
+      "suggestion": "核对质检依据和完整语境，并按平台规则调整。"
+    },
+    {
+      "id": "backpack-support-claims",
+      "platforms": ["京东自营"],
+      "categories": ["书包"],
+      "terms": ["护脊", "保护脊柱", "不伤脊椎", "久背不累"],
+      "rule_type": "replace",
+      "suggestion": "按平台规则改为减压等允许表述或删除。"
+    },
+    {
+      "id": "patent-claim",
+      "platforms": ["京东自营"],
+      "categories": ["书包"],
+      "terms": ["专利"],
+      "rule_type": "requires_evidence",
+      "suggestion": "核对当前商品专利号和适用范围。"
+    },
+    {
+      "id": "formaldehyde-claim",
+      "platforms": ["京东自营"],
+      "categories": ["服饰类"],
+      "terms": ["甲醛"],
+      "rule_type": "requires_evidence",
+      "suggestion": "核对当前商品质检依据。"
+    },
+    {
+      "id": "return-warranty-claims",
+      "platforms": ["京东自营"],
+      "categories": ["*"],
+      "terms": ["包退换", "质保"],
+      "rule_type": "prohibited",
+      "suggestion": "删除包退换或质保承诺。"
+    },
+    {
+      "id": "long-use-comfort",
+      "platforms": ["京东自营"],
+      "categories": ["*"],
+      "terms": ["不累"],
+      "rule_type": "context_review",
+      "suggestion": "结合完整语境确认是否属于久用不累类表述。"
+    },
+    {
+      "id": "graphene",
+      "platforms": ["抖音达人", "唯品会"],
+      "categories": ["冬款"],
+      "terms": ["石墨烯"],
+      "rule_type": "requires_evidence",
+      "suggestion": "核对当前商品质检报告和平台处理要求。"
+    },
+    {
+      "id": "self-heating",
+      "platforms": ["京东自营", "抖音达人", "唯品会"],
+      "categories": ["冬款"],
+      "terms": ["自发热"],
+      "rule_type": "replace",
+      "suggestion": "按平台要求改为“会发热”或其他允许表述。"
+    },
+    {
+      "id": "cold-illness",
+      "platforms": ["蜂享家"],
+      "categories": ["*"],
+      "terms": ["感冒"],
+      "rule_type": "prohibited",
+      "suggestion": "删除“感冒”表述。"
+    },
+    {
+      "id": "kuaishou-sunglasses-common",
+      "platforms": ["快手"],
+      "categories": ["太阳镜"],
+      "terms": ["首", "TOP1", "第一", "感冒", "国家级", "权威"],
+      "rule_type": "context_review",
+      "suggestion": "同时按蜂享家广告法禁用词规则复核。"
+    },
+    {
+      "id": "milu",
+      "platforms": ["爱库存"],
+      "categories": ["*"],
+      "terms": ["麋鹿"],
+      "rule_type": "replace",
+      "suggestion": "改为拼音“milu”或“小鹿”。"
+    },
+    {
+      "id": "explosive",
+      "platforms": ["抖音达人"],
+      "categories": ["服饰类"],
+      "terms": ["爆"],
+      "rule_type": "context_review",
+      "suggestion": "结合完整语境确认是否属于平台禁用表达。"
+    },
+    {
+      "id": "champion",
+      "platforms": ["唯品会"],
+      "categories": ["*"],
+      "terms": ["冠军"],
+      "rule_type": "replace",
+      "suggestion": "改为“名将”或删除。"
+    },
+    {
+      "id": "down-feather",
+      "platforms": ["唯品会"],
+      "categories": ["滑雪服", "羽绒服"],
+      "terms": ["羽绒"],
+      "rule_type": "requires_evidence",
+      "suggestion": "核对当前商品质检报告。"
+    },
+    {
+      "id": "three-in-one",
+      "platforms": ["唯品会"],
+      "categories": ["冲锋衣", "雨衣"],
+      "terms": ["三合一"],
+      "rule_type": "conditional",
+      "suggestion": "确认是否为单件销售；单件销售时删除。"
+    }
+  ]
+}
