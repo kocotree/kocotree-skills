@@ -13,9 +13,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, UnidentifiedImageError
-
 from cleanup_work import DEFAULT_WORK_DIR, cleanup_work_directory
+from PIL import Image, UnidentifiedImageError
 
 LOGGER = logging.getLogger("source_pack_inventory")
 TYPOGRAPHY_CONFIG_PATH = (
@@ -80,6 +79,17 @@ TEXT_REVIEW_FIELDS = [
     "text_review_notes",
     "text_evidence_path",
 ]
+MATERIAL_REVIEW_FIELDS = [
+    "material_claim_presence_status",
+    "material_claim_transcript",
+    "material_reference_status",
+    "material_reference_path",
+    "material_reference_composition",
+    "material_composition_status",
+    "material_difference",
+    "material_review_notes",
+    "material_evidence_path",
+]
 TYPOGRAPHY_REVIEW_FIELDS = [
     "typography_profile_id",
     "typography_watch_characters",
@@ -115,6 +125,7 @@ CSV_FIELDS = [
     *IMAGE_AUDIT_FIELDS,
     *EDGE_REVIEW_FIELDS,
     *TEXT_REVIEW_FIELDS,
+    *MATERIAL_REVIEW_FIELDS,
     *TYPOGRAPHY_REVIEW_FIELDS,
     "non_image_readability_status",
     "issue_status",
@@ -327,7 +338,7 @@ def inspect_image(path: Path, expected_image: bool) -> dict[str, str | int]:
             result["open_status"] = "failed"
             result["open_error"] = f"{type(exc).__name__}: {exc}"
             LOGGER.warning("图片读取失败：%s；原因：%s", path, result["open_error"])
-    except Exception as exc:  # 保留异常文件记录，避免台账漏项。
+    except Exception as exc:  # noqa: BLE001  # 保留异常文件记录，避免台账漏项。
         result["open_status"] = "failed" if expected_image else "read_error"
         result["open_error"] = f"{type(exc).__name__}: {exc}"
         LOGGER.warning("文件内容识别失败：%s；原因：%s", path, result["open_error"])
@@ -494,6 +505,15 @@ def build_base_row(
         "verb_collocation_status": image_default,
         "text_review_notes": "",
         "text_evidence_path": "",
+        "material_claim_presence_status": image_default,
+        "material_claim_transcript": "",
+        "material_reference_status": image_default,
+        "material_reference_path": "",
+        "material_reference_composition": "",
+        "material_composition_status": image_default,
+        "material_difference": "",
+        "material_review_notes": "",
+        "material_evidence_path": "",
         "non_image_readability_status": (
             "not_applicable" if is_image else "not_checked"
         ),
@@ -633,7 +653,7 @@ def build_inventory(
             dimensions[str(row["dimension_key"])] += 1
 
     summary: dict[str, Any] = {
-        "schema_version": 5,
+        "schema_version": 6,
         "root": str(resolved_root),
         "inventory": str(resolved_output),
         "directories": len(directories),

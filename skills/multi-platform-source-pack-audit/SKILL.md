@@ -1,8 +1,6 @@
 ---
 name: multi-platform-source-pack-audit
 description: 对视觉部交付的 KOCOTREE 服装及配饰原始数据包执行多平台处理前质检，逐目录、逐文件、逐图片检查输入包结构与命名、产品信息、服饰 Logo、检测报告、中文文案、单位、字体字形、色差、透明图、详情页、平台驳回词和广告合规，并生成带图片证据的飞书错误清单。用于原始数据包进入 multi-platform-image-processor 前的检查、复查、准入审核和人工处理定位。
-metadata:
-  version: "1.0.0"
 ---
 
 # 多平台原始数据包质检
@@ -24,15 +22,18 @@ metadata:
 3. [references/execution-checklist.md](references/execution-checklist.md)：逐款、逐模块完成条件。
 4. [references/report-structure.md](references/report-structure.md)：飞书错误清单结构和证据字段。
 5. [references/visual-review.md](references/visual-review.md)：四边、内部接缝、逐字复核和完成校验协议。
+6. [references/material-review.md](references/material-review.md)：具体面料成分依据、逐图材质台账和判定口径。
 
 按任务内容读取以下专项资料：
 
 - 检查17项历史问题形态时，读取 [references/historical-error-examples.md](references/historical-error-examples.md)，只打开当前检查项对应的示例图。
-- 商品适用平台和类目明确时，读取 [references/platform-prohibited-terms.md](references/platform-prohibited-terms.md) 和 [references/platform-image-requirements.md](references/platform-image-requirements.md) 中对应平台部分。
+- 每次审核执行 [references/platform-prohibited-terms.md](references/platform-prohibited-terms.md)；平台或类目未明确时扫描全部规则并将命中项标记为“待补证”。
+- 商品适用平台和类目明确时，读取 [references/platform-image-requirements.md](references/platform-image-requirements.md) 中对应平台部分。
 - 原始包含详情页时，读取 [references/typography-review.md](references/typography-review.md)。
 - 目录命名脚本自动加载 [assets/configs/source-pack-naming-rules.json](assets/configs/source-pack-naming-rules.json)。
 - 字体脚本自动加载 [assets/configs/typography-profiles.json](assets/configs/typography-profiles.json)。
 - 视觉复核脚本自动加载 [assets/configs/visual-review-rules.json](assets/configs/visual-review-rules.json)。
+- 驳回词扫描和完整审核校验分别加载 [assets/configs/platform-prohibited-terms.json](assets/configs/platform-prohibited-terms.json) 与 [assets/configs/audit-completion-rules.json](assets/configs/audit-completion-rules.json)。
 
 ## NAS 参考来源
 
@@ -106,10 +107,18 @@ uv run python .\cleanup_work.py
 uv run python .\validate_typography_review.py ".\work\<任务标识>\inventory.csv" --summary-output ".\work\<任务标识>\typography-review-summary.json"
 ```
 
-人工完成四边、内部接缝和文字专项台账后执行完成校验：
+人工完成四边、内部接缝、文字和材质专项台账后扫描平台驳回词：
 
 ```powershell
-uv run python .\validate_visual_review.py ".\work\<任务标识>\inventory.csv" --summary-output ".\work\<任务标识>\visual-review-summary.json"
+uv run python .\scan_prohibited_terms.py ".\work\<任务标识>\inventory.csv" --output ".\work\<任务标识>\prohibited-term-audit.json"
+```
+
+平台或类目明确时追加 `--platform "<平台>"`、`--category "<类目>"`；多个值分别重复传入对应参数。
+
+逐条填写 `prohibited-term-audit.json` 中的 `review_status`、`review_notes` 和 `evidence_path`，再执行完整审核校验：
+
+```powershell
+uv run python .\validate_audit_completion.py ".\work\<任务标识>\inventory.csv" --prohibited-term-audit ".\work\<任务标识>\prohibited-term-audit.json" --summary-output ".\work\<任务标识>\audit-completion-summary.json"
 ```
 
 不要在 Skill 根目录或其他目录创建该 Skill 的虚拟环境和运行产物。台账用于登记货号、模块、文件属性、重复关系、逐图专项状态和证据状态；命名质检结果用于记录十项输入包目录与命名检查状态。自动字段只提供候选信息，不能代替逐张放大目视检查。
@@ -122,6 +131,7 @@ uv run python .\validate_visual_review.py ".\work\<任务标识>\inventory.csv" 
 - 按 [references/visual-review.md](references/visual-review.md) 记录每张图片的四边状态、文字存在性和全部适用文字专项；详情模块同时记录内部接缝状态。
 - 联系表、缩略图、OCR、取色、哈希、Alpha 检查和拼接长图只能辅助定位。
 - 按商品适用平台和类目执行 [references/platform-prohibited-terms.md](references/platform-prohibited-terms.md)，逐张核对图片中的可见文字。
+- 按 [references/material-review.md](references/material-review.md) 判断每张图片是否包含材质文案，并将每处材质文案与当前款具体面料成分信息表逐项核对。
 - 按图片适用平台和类型执行 [references/platform-image-requirements.md](references/platform-image-requirements.md)，核对真实像素、文件大小、数量、编号、命名和版式备注。
 - 按 [references/typography-review.md](references/typography-review.md) 遍历全部详情页切片，逐个定位并比对数字 `1` 的字体和字重。
 - 按 [references/execution-checklist.md](references/execution-checklist.md) 完成全部专项。
@@ -138,7 +148,7 @@ uv run python .\validate_visual_review.py ".\work\<任务标识>\inventory.csv" 
 
 ### 5. 交叉比对
 
-- 产品信息：核对货号、品名、品类、颜色、尺码、执行标准、安全类别、等级、成分名称、百分比和部位。
+- 产品信息：核对货号、品名、品类、颜色、尺码、执行标准、安全类别、等级、成分名称、百分比、部位和限定语。具体面料成分信息表列出纤维明细时，图片中的“其他”不能替代明细。
 - 服饰 Logo：核对形状、颜色、比例、方向、版本、字样、组合关系和落位。
 - 检测报告：确认报告对应当前款和样品，再核对项目、数值、单位、结论、适用范围、限定条件和编号。
 - 每款分别记录三项来源的读取与匹配状态；无差异也明确写“已核对，未发现不一致”。
@@ -152,6 +162,7 @@ uv run python .\validate_visual_review.py ".\work\<任务标识>\inventory.csv" 
 - 功能性或性能性主张缺少对应报告、报告范围不足或平台适用性尚未确认时使用“待补证”，并列明需要的报告编号、页码、检测项目和适用范围。
 - 自动检测只形成候选问题；涉及色差、实拍 Logo、语义和报告支撑范围时必须结合人工判断。
 - 平台驳回词命中项必须写入飞书错误清单，注明适用平台、产品类目、命中文字、完整语境、规则依据和处理建议。
+- 材质成分差异必须写入飞书错误清单，并列出图片原文、具体面料成分信息表原文、差异项和对照证据。
 - 平台图片规格不符合项必须写入飞书错误清单，注明平台、图片类型、实际值、要求值和处理建议。
 - 原始包目录或文件命名不符合项必须写入飞书错误清单，注明检查项、实际路径、实际名称、期望规则和修改建议。
 - 同一字体问题可合并成一个条目，但必须列出全部受影响文件、位置和数量。
@@ -165,7 +176,7 @@ uv run python .\validate_visual_review.py ".\work\<任务标识>\inventory.csv" 
 只有同时满足以下条件才可宣称完成：
 
 1. 已确认审核对象为视觉部原始输入包。
-2. 五个核心参考文件已完整读取，适用于当前模块和平台的专项资料已按需读取。
+2. 六个核心参考文件已完整读取，适用于当前模块和平台的专项资料已按需读取。
 3. 三个 NAS 参考目录均已读取，或已在审核前明确记录无法读取的目录和限制。
 4. 台账图片总数与逐张目视完成数一致，未检查数为零。
 5. 每款所有专项均有明确状态。
@@ -177,4 +188,6 @@ uv run python .\validate_visual_review.py ".\work\<任务标识>\inventory.csv" 
 11. 详情页数字 `1` 的发现数量等于已检查数量，未检查数量为零；异常位置已全部写入台账和飞书文档。
 12. 飞书文档已反向读取验证。
 13. 原始包目录与文件命名十项检查均已完成，所有不符合项已写入飞书文档。
-14. `visual-review-summary.json` 的 `valid` 为 `true`，四边、内部接缝和文字复核完成数均达到实际应检查基数。
+14. 平台驳回词扫描已覆盖全部可读文字，全部命中项均有处理状态、说明和适用证据。
+15. 材质文案存在性判断覆盖全部图片，全部材质文案均已关联具体面料成分依据或标记待补证。
+16. `audit-completion-summary.json` 的 `valid` 为 `true`；非零退出码时禁止创建最终飞书报告或宣称完成。
