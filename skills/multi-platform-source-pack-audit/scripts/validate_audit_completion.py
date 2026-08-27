@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""校验视觉复核、平台驳回词和材质成分审核是否完整闭环。"""
+"""校验视觉复核、OCR、平台驳回词和材质成分审核是否完整闭环。"""
 
 from __future__ import annotations
 
@@ -27,6 +27,12 @@ DEFAULT_PROHIBITED_CONFIG = (
     / "configs"
     / "platform-prohibited-terms.json"
 )
+DEFAULT_OCR_CONFIG = (
+    Path(__file__).resolve().parent.parent
+    / "assets"
+    / "configs"
+    / "ocr-review-rules.json"
+)
 DEFAULT_COMPLETION_CONFIG = (
     Path(__file__).resolve().parent.parent
     / "assets"
@@ -44,11 +50,31 @@ MATERIAL_FIELDS = {
     "material_review_notes",
     "material_evidence_path",
 }
+OCR_FIELDS = {
+    "ocr_status",
+    "ocr_engine",
+    "ocr_block_count",
+    "ocr_mean_confidence",
+    "ocr_low_confidence_count",
+    "ocr_text",
+    "ocr_review_scopes",
+    "ocr_result_path",
+    "ocr_evidence_path",
+    "ocr_human_verified",
+    "ocr_review_notes",
+}
 REQUIRED_INVENTORY_FIELDS = {
     "relative_path",
     "is_image",
+    "sha256",
     "text_presence_status",
+    "visible_text_transcript",
     "ad_compliance_status",
+    "identity_check_status",
+    "size_unit_status",
+    "execution_standard_status",
+    "typo_status",
+    *OCR_FIELDS,
     *MATERIAL_FIELDS,
 }
 
@@ -98,6 +124,60 @@ def calculate_file_sha256(path: Path) -> str:
         for chunk in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def calculate_inventory_image_sha256(rows: list[dict[str, str]]) -> str:
+    """计算图片路径和文件哈希组成的稳定摘要。"""
+
+    payload = [
+        {
+            "relative_path": row.get("relative_path", ""),
+            "is_image": row.get("is_image", ""),
+            "sha256": row.get("sha256", ""),
+        }
+        for row in rows
+    ]
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def normalize_review_text(text: str) -> str:
+    """归一化 OCR 与人工转录文字，忽略空白差异。"""
+
+    return "".join(text.split()).casefold()
+
+
+def load_ocr_config(config_path: Path) -> dict[str, Any]:
+    """读取并验证 OCR 完成校验所需配置。
+
+    参数：
+        config_path: OCR 审核 JSON 配置路径。
+
+    返回值：
+        包含完成状态、范围字段和允许状态的配置字典。
+    """
+
+    config = json.loads(config_path.resolve().read_text(encoding="utf-8"))
+    required = {
+        "completed_ocr_statuses",
+        "scope_status_fields",
+        "scope_allowed_statuses",
+        "scope_rules",
+    }
+    missing = sorted(required - set(config))
+    if missing:
+        raise ValueError(f"OCR 审核配置缺少字段：{missing}")
+    scope_ids = {str(rule["id"]) for rule in config["scope_rules"]}
+    if set(config["scope_status_fields"]) != scope_ids:
+        raise ValueError("OCR 范围字段映射不完整")
+    if set(config["scope_allowed_statuses"]) != scope_ids:
+        raise ValueError("OCR 范围允许状态映射不完整")
+    return config
 
 
 def load_completion_config(config_path: Path) -> dict[str, Any]:
@@ -167,6 +247,335 @@ def add_error(
     if row is not None:
         item["row"] = row
     errors.append(item)
+
+
+def validate_ocr_reviews(
+    rows: list[dict[str, str]],
+    ocr_results_path: Path,
+    ocr_config_path: Path,
+    config: dict[str, Any],
+) -> tuple[dict[str, int], list[dict[str, Any]]]:
+    """校验全包 OCR 覆盖、人工复核和六类文字专项状态。
+
+    参数：
+        rows: 完整审核台账中的全部记录。
+        ocr_results_path: `run_ocr.py` 生成的结构化 OCR 结果路径。
+        ocr_config_path: 本次审核使用的 OCR 配置路径。
+        config: 已验证的 OCR 审核配置。
+
+    返回值：
+        OCR 审核统计，以及逐项错误列表。
+    """
+
+    results = json.loads(ocr_results_path.resolve().read_text(encoding="utf-8"))
+    errors: list[dict[str, Any]] = []
+    image_rows = [
+        row for row in rows if row.get("is_image", "").strip().casefold() == "true"
+    ]
+    expected_config_hash = calculate_file_sha256(ocr_config_path.resolve())
+    if results.get("config_sha256") != expected_config_hash:
+        add_error(
+            errors,
+            "ocr",
+            "",
+            "config_sha256",
+            "OCR 结果与当前规则配置不一致，请重新识别",
+        )
+    expected_inventory_hash = calculate_inventory_image_sha256(rows)
+    if results.get("inventory_image_sha256") != expected_inventory_hash:
+        add_error(
+            errors,
+            "ocr",
+            "",
+            "inventory_image_sha256",
+            "OCR 结果与当前图片清单不一致，请重新识别",
+        )
+    if results.get("images_total") != len(image_rows):
+        add_error(
+            errors,
+            "ocr",
+            "",
+            "images_total",
+            f"OCR 图片总数应为 {len(image_rows)}，实际为 {results.get('images_total')}",
+        )
+
+    result_images = results.get("images")
+    if not isinstance(result_images, list):
+        raise TypeError("OCR 结果 images 必须是列表")
+    result_by_path: dict[str, dict[str, Any]] = {}
+    for item in result_images:
+        if not isinstance(item, dict):
+            raise TypeError("OCR 逐图结果必须是对象")
+        relative_path = str(item.get("relative_path", "")).strip()
+        if relative_path in result_by_path:
+            add_error(
+                errors,
+                "ocr",
+                relative_path,
+                "relative_path",
+                "OCR 结果包含重复图片路径",
+            )
+        result_by_path[relative_path] = item
+
+    completed_statuses = {str(item) for item in config["completed_ocr_statuses"]}
+    scope_status_fields = {
+        str(key): str(value) for key, value in config["scope_status_fields"].items()
+    }
+    scope_allowed_statuses = {
+        str(key): {str(status) for status in value}
+        for key, value in config["scope_allowed_statuses"].items()
+    }
+    stats = {
+        "images_expected": len(image_rows),
+        "ocr_completed": 0,
+        "human_verified": 0,
+        "success": 0,
+        "no_text": 0,
+        "failed_with_manual_fallback": 0,
+        "low_confidence_blocks": 0,
+        "review_scopes": 0,
+    }
+    resolved_results = ocr_results_path.resolve()
+    for row_number, row in enumerate(rows, start=2):
+        if row.get("is_image", "").strip().casefold() != "true":
+            continue
+        relative_path = row.get("relative_path", "").strip()
+        result = result_by_path.get(relative_path)
+        if result is None:
+            add_error(
+                errors,
+                "ocr",
+                relative_path,
+                "relative_path",
+                "当前图片缺少 OCR 结构化结果",
+                row_number,
+            )
+            continue
+        if str(result.get("sha256", "")) != row.get("sha256", "").strip():
+            add_error(
+                errors,
+                "ocr",
+                relative_path,
+                "sha256",
+                "OCR 结果对应的图片哈希与台账不一致",
+                row_number,
+            )
+
+        status = row.get("ocr_status", "").strip()
+        if status not in completed_statuses:
+            add_error(
+                errors,
+                "ocr",
+                relative_path,
+                "ocr_status",
+                f"OCR 状态未完成，可用值：{sorted(completed_statuses)}",
+                row_number,
+            )
+            continue
+        stats["ocr_completed"] += 1
+        if status != str(result.get("status", "")):
+            add_error(
+                errors,
+                "ocr",
+                relative_path,
+                "ocr_status",
+                "台账 OCR 状态与结构化结果不一致",
+                row_number,
+            )
+        if not row.get("ocr_engine", "").strip():
+            add_error(
+                errors,
+                "ocr",
+                relative_path,
+                "ocr_engine",
+                "OCR 引擎信息不能为空",
+                row_number,
+            )
+        expected_result_path = f"{resolved_results}#{result.get('id', '')}"
+        if row.get("ocr_result_path", "").strip() != expected_result_path:
+            add_error(
+                errors,
+                "ocr",
+                relative_path,
+                "ocr_result_path",
+                "台账 OCR 结果路径与当前结构化结果不一致",
+                row_number,
+            )
+
+        notes = row.get("ocr_review_notes", "").strip()
+        if row.get("ocr_human_verified", "").strip().casefold() != "true":
+            add_error(
+                errors,
+                "ocr",
+                relative_path,
+                "ocr_human_verified",
+                "必须对照原图复核 OCR 全文和文字框",
+                row_number,
+            )
+        else:
+            stats["human_verified"] += 1
+
+        row_scopes = {
+            item.strip()
+            for item in row.get("ocr_review_scopes", "").split(";")
+            if item.strip()
+        }
+        result_scopes = {str(item) for item in result.get("review_scopes", [])}
+        unknown_scopes = sorted(row_scopes - set(scope_status_fields))
+        if unknown_scopes:
+            add_error(
+                errors,
+                "ocr",
+                relative_path,
+                "ocr_review_scopes",
+                f"包含未知 OCR 审核范围：{unknown_scopes}",
+                row_number,
+            )
+        missing_scopes = sorted(result_scopes - row_scopes)
+        if missing_scopes:
+            add_error(
+                errors,
+                "ocr",
+                relative_path,
+                "ocr_review_scopes",
+                f"缺少 OCR 自动候选范围：{missing_scopes}",
+                row_number,
+            )
+        if row.get("text_presence_status", "").strip() == "present":
+            required_text_scopes = {"prohibited_terms", "typo"}
+            missing_text_scopes = sorted(required_text_scopes - row_scopes)
+            if missing_text_scopes:
+                add_error(
+                    errors,
+                    "ocr",
+                    relative_path,
+                    "ocr_review_scopes",
+                    f"含文字图片缺少通用审核范围：{missing_text_scopes}",
+                    row_number,
+                )
+        for scope in sorted(row_scopes & set(scope_status_fields)):
+            field = scope_status_fields[scope]
+            field_status = row.get(field, "").strip()
+            if field_status not in scope_allowed_statuses[scope]:
+                add_error(
+                    errors,
+                    "ocr",
+                    relative_path,
+                    field,
+                    f"OCR 范围 {scope} 需要完成对应专项，可用值：{sorted(scope_allowed_statuses[scope])}",
+                    row_number,
+                )
+        stats["review_scopes"] += len(row_scopes)
+
+        if status == "success":
+            stats["success"] += 1
+            block_count = int(row.get("ocr_block_count", "") or 0)
+            if block_count <= 0 or not row.get("ocr_text", "").strip():
+                add_error(
+                    errors,
+                    "ocr",
+                    relative_path,
+                    "ocr_text",
+                    "OCR 成功时必须包含文字块和全文",
+                    row_number,
+                )
+            if row.get("ocr_text", "") != str(result.get("text", "")):
+                add_error(
+                    errors,
+                    "ocr",
+                    relative_path,
+                    "ocr_text",
+                    "台账 OCR 原文与结构化结果不一致",
+                    row_number,
+                )
+            if row.get("text_presence_status", "").strip() != "present":
+                add_error(
+                    errors,
+                    "ocr",
+                    relative_path,
+                    "text_presence_status",
+                    "OCR 识别到文字时文字存在性必须为 present",
+                    row_number,
+                )
+            if not row.get("ocr_evidence_path", "").strip():
+                add_error(
+                    errors,
+                    "ocr",
+                    relative_path,
+                    "ocr_evidence_path",
+                    "OCR 成功时必须保留文字框复核图",
+                    row_number,
+                )
+            if (
+                normalize_review_text(row.get("ocr_text", ""))
+                != normalize_review_text(row.get("visible_text_transcript", ""))
+                and not notes
+            ):
+                add_error(
+                    errors,
+                    "ocr",
+                    relative_path,
+                    "ocr_review_notes",
+                    "人工转录修正 OCR 原文时必须说明修正内容",
+                    row_number,
+                )
+            stats["low_confidence_blocks"] += int(
+                row.get("ocr_low_confidence_count", "") or 0
+            )
+        elif status == "no_text":
+            stats["no_text"] += 1
+            if int(row.get("ocr_block_count", "") or 0) != 0:
+                add_error(
+                    errors,
+                    "ocr",
+                    relative_path,
+                    "ocr_block_count",
+                    "无文字状态的 OCR 文字块数量必须为零",
+                    row_number,
+                )
+            if row.get("text_presence_status", "").strip() != "absent" and not notes:
+                add_error(
+                    errors,
+                    "ocr",
+                    relative_path,
+                    "ocr_review_notes",
+                    "人工发现 OCR 漏字时必须说明并完成手工转录",
+                    row_number,
+                )
+        else:
+            text_presence = row.get("text_presence_status", "").strip()
+            if text_presence not in {"present", "absent", "unreadable"}:
+                add_error(
+                    errors,
+                    "ocr",
+                    relative_path,
+                    "text_presence_status",
+                    "OCR 失败后必须人工判断文字存在性",
+                    row_number,
+                )
+            if not notes:
+                add_error(
+                    errors,
+                    "ocr",
+                    relative_path,
+                    "ocr_review_notes",
+                    "OCR 失败后必须记录人工降级处理说明",
+                    row_number,
+                )
+            if (
+                text_presence == "present"
+                and not row.get("visible_text_transcript", "").strip()
+            ):
+                add_error(
+                    errors,
+                    "ocr",
+                    relative_path,
+                    "visible_text_transcript",
+                    "OCR 失败且图片含文字时必须人工转录全文",
+                    row_number,
+                )
+            stats["failed_with_manual_fallback"] += 1
+    return stats, errors
 
 
 def validate_material_reviews(
@@ -565,18 +974,24 @@ def validate_prohibited_term_audit(
 
 def validate_audit_completion(
     inventory_path: Path,
+    ocr_results_path: Path,
     prohibited_term_audit_path: Path,
+    ocr_config_path: Path,
     prohibited_config_path: Path,
     visual_config: dict[str, Any],
+    ocr_config: dict[str, Any],
     completion_config: dict[str, Any],
 ) -> dict[str, Any]:
     """执行完整审核交付前的统一校验。
 
     参数：
         inventory_path: 已填写审核结果的 CSV 台账路径。
+        ocr_results_path: 全包 OCR 结构化结果路径。
         prohibited_term_audit_path: 已人工复核的驳回词候选 JSON 路径。
+        ocr_config_path: 本次审核使用的 OCR 配置路径。
         prohibited_config_path: 本次审核使用的平台驳回词配置路径。
         visual_config: 已验证的视觉复核配置。
+        ocr_config: 已验证的 OCR 审核配置。
         completion_config: 已验证的完整审核校验配置。
 
     返回值：
@@ -586,6 +1001,12 @@ def validate_audit_completion(
     rows = load_inventory(inventory_path)
     visual_summary = validate_visual_review(inventory_path, visual_config)
     errors = [{"source": "visual", **item} for item in visual_summary.get("errors", [])]
+    ocr_stats, ocr_errors = validate_ocr_reviews(
+        rows,
+        ocr_results_path,
+        ocr_config_path,
+        ocr_config,
+    )
     material_stats, material_errors = validate_material_reviews(
         rows,
         completion_config,
@@ -598,17 +1019,20 @@ def validate_audit_completion(
         prohibited_config_path,
         completion_config,
     )
+    errors.extend(ocr_errors)
     errors.extend(material_errors)
     errors.extend(ad_errors)
     errors.extend(prohibited_errors)
     return {
         "schema_version": 1,
         "inventory": str(inventory_path.resolve()),
+        "ocr_results": str(ocr_results_path.resolve()),
         "prohibited_term_audit": str(prohibited_term_audit_path.resolve()),
         "valid": not errors,
         "error_count": len(errors),
         "stats": {
             "visual": visual_summary.get("stats", {}),
+            "ocr": ocr_stats,
             "material": material_stats,
             "ad_compliance": ad_stats,
             "prohibited_terms": prohibited_stats,
@@ -630,6 +1054,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("inventory", type=Path, help="已填写审核结果的 CSV 台账")
     parser.add_argument(
+        "--ocr-results",
+        type=Path,
+        required=True,
+        help="全包 OCR 结构化结果 JSON",
+    )
+    parser.add_argument(
         "--prohibited-term-audit",
         type=Path,
         required=True,
@@ -640,6 +1070,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_VISUAL_CONFIG,
         help="视觉复核配置",
+    )
+    parser.add_argument(
+        "--ocr-config",
+        type=Path,
+        default=DEFAULT_OCR_CONFIG,
+        help="OCR 审核配置",
     )
     parser.add_argument(
         "--prohibited-config",
@@ -682,18 +1118,23 @@ def main() -> int:
             work_dir=DEFAULT_WORK_DIR,
             protected_paths=[
                 args.inventory.parent,
+                args.ocr_results.parent,
                 args.prohibited_term_audit.parent,
                 args.summary_output.parent,
             ],
         )
         LOGGER.info("开始校验完整审核台账：%s", args.inventory.resolve())
         visual_config = load_visual_config(args.visual_config)
+        ocr_config = load_ocr_config(args.ocr_config)
         completion_config = load_completion_config(args.completion_config)
         summary = validate_audit_completion(
             inventory_path=args.inventory,
+            ocr_results_path=args.ocr_results,
             prohibited_term_audit_path=args.prohibited_term_audit,
+            ocr_config_path=args.ocr_config,
             prohibited_config_path=args.prohibited_config,
             visual_config=visual_config,
+            ocr_config=ocr_config,
             completion_config=completion_config,
         )
         args.summary_output.parent.mkdir(parents=True, exist_ok=True)
@@ -709,6 +1150,7 @@ def main() -> int:
             work_dir=DEFAULT_WORK_DIR,
             protected_paths=[
                 args.inventory.parent,
+                args.ocr_results.parent,
                 args.prohibited_term_audit.parent,
                 args.summary_output.parent,
             ],

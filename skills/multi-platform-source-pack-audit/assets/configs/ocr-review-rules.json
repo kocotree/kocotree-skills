@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "engine": {
+    "name": "RapidOCR",
+    "backend": "onnxruntime",
+    "minimum_confidence": 0.75,
+    "evidence_max_side": 6000,
+    "evidence_jpeg_quality": 85
+  },
+  "completed_ocr_statuses": [
+    "success",
+    "no_text",
+    "failed"
+  ],
+  "scope_status_fields": {
+    "prohibited_terms": "ad_compliance_status",
+    "typo": "typo_status",
+    "material_composition": "material_claim_presence_status",
+    "size_chart": "size_unit_status",
+    "product_identity": "identity_check_status",
+    "execution_standard": "execution_standard_status"
+  },
+  "scope_allowed_statuses": {
+    "prohibited_terms": ["pass", "issue", "needs_review", "needs_evidence"],
+    "typo": ["pass", "issue", "needs_review", "needs_evidence"],
+    "material_composition": ["present", "absent", "unreadable"],
+    "size_chart": ["pass", "issue", "needs_review", "needs_evidence", "not_applicable"],
+    "product_identity": ["pass", "issue", "needs_review", "needs_evidence", "not_applicable"],
+    "execution_standard": ["pass", "issue", "needs_review", "needs_evidence", "not_applicable"]
+  },
+  "scope_rules": [
+    {
+      "id": "prohibited_terms",
+      "apply_to_all_text": true,
+      "keywords": [],
+      "patterns": [],
+      "modules": [],
+      "path_keywords": []
+    },
+    {
+      "id": "typo",
+      "apply_to_all_text": true,
+      "keywords": [],
+      "patterns": [],
+      "modules": [],
+      "path_keywords": []
+    },
+    {
+      "id": "material_composition",
+      "apply_to_all_text": false,
+      "keywords": ["材质", "面料", "成分", "聚酯纤维", "锦纶", "腈纶", "氨纶", "粘纤", "羊毛", "棉", "其他", "除外"],
+      "patterns": [],
+      "modules": [],
+      "path_keywords": ["水洗唛", "合格证", "吊牌", "材质", "面料"]
+    },
+    {
+      "id": "size_chart",
+      "apply_to_all_text": false,
+      "keywords": ["尺码", "衣长", "胸围", "肩宽", "袖长", "身高", "体重", "建议", "试穿", "选码"],
+      "patterns": ["(?i)\\d+(?:\\.\\d+)?\\s*(?:cm|kg|码)"],
+      "modules": [],
+      "path_keywords": ["尺码", "选码", "试穿"]
+    },
+    {
+      "id": "product_identity",
+      "apply_to_all_text": false,
+      "keywords": ["货号", "款号", "品名", "商品名称", "颜色", "色号", "规格", "SKU"],
+      "patterns": [],
+      "modules": ["SKU"],
+      "path_keywords": ["SKU", "合格证", "吊牌"]
+    },
+    {
+      "id": "execution_standard",
+      "apply_to_all_text": false,
+      "keywords": ["执行标准", "安全类别", "产品等级", "合格品", "A类", "B类", "C类"],
+      "patterns": ["(?i)(?:GB|FZ|Q/)\\s*(?:/T)?\\s*[A-Z0-9.\\-—]+"],
+      "modules": [],
+      "path_keywords": ["合格证", "吊牌"]
+    }
+  ]
+}

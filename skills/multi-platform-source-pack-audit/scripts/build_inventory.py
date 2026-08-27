@@ -50,6 +50,7 @@ IMAGE_AUDIT_FIELDS = [
     "text_content_status",
     "typography_layout_status",
     "size_unit_status",
+    "execution_standard_status",
     "logo_status",
     "color_consistency_status",
     "transparency_quality_status",
@@ -59,6 +60,19 @@ IMAGE_AUDIT_FIELDS = [
     "platform_file_size_status",
     "platform_quantity_naming_status",
     "platform_layout_status",
+]
+OCR_REVIEW_FIELDS = [
+    "ocr_status",
+    "ocr_engine",
+    "ocr_block_count",
+    "ocr_mean_confidence",
+    "ocr_low_confidence_count",
+    "ocr_text",
+    "ocr_review_scopes",
+    "ocr_result_path",
+    "ocr_evidence_path",
+    "ocr_human_verified",
+    "ocr_review_notes",
 ]
 EDGE_REVIEW_FIELDS = [
     "edge_top_status",
@@ -122,6 +136,7 @@ CSV_FIELDS = [
     "open_error",
     "candidate_flags",
     "review_status",
+    *OCR_REVIEW_FIELDS,
     *IMAGE_AUDIT_FIELDS,
     *EDGE_REVIEW_FIELDS,
     *TEXT_REVIEW_FIELDS,
@@ -472,6 +487,17 @@ def build_base_row(
         **image_data,
         "candidate_flags": ",".join(candidate_flags),
         "review_status": "not_checked",
+        "ocr_status": image_default,
+        "ocr_engine": "",
+        "ocr_block_count": "",
+        "ocr_mean_confidence": "",
+        "ocr_low_confidence_count": "",
+        "ocr_text": "",
+        "ocr_review_scopes": "",
+        "ocr_result_path": "",
+        "ocr_evidence_path": "",
+        "ocr_human_verified": "false" if is_image else "not_applicable",
+        "ocr_review_notes": "",
         "typography_profile_id": (
             str(typography_profile["id"]) if typography_profile else ""
         ),
@@ -653,7 +679,7 @@ def build_inventory(
             dimensions[str(row["dimension_key"])] += 1
 
     summary: dict[str, Any] = {
-        "schema_version": 6,
+        "schema_version": 7,
         "root": str(resolved_root),
         "inventory": str(resolved_output),
         "directories": len(directories),

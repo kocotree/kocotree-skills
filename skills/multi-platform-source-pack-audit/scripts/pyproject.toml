@@ -1,10 +1,12 @@
 [project]
 name = "multi-platform-source-pack-audit"
-version = "0.1.0"
+version = "0.2.0"
 description = "多平台原始数据包质检的只读辅助工具"
 requires-python = ">=3.11"
 dependencies = [
+    "onnxruntime>=1.29.0,<2.0.0",
     "pillow>=11.3.0",
+    "rapidocr>=3.9.2,<4.0.0",
     "xlrd>=2.0.1",
 ]
 

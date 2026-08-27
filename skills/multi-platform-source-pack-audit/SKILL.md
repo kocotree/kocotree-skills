@@ -1,8 +1,8 @@
 ---
 name: multi-platform-source-pack-audit
-description: 对视觉部交付的 KOCOTREE 服装及配饰原始数据包执行多平台处理前质检，逐目录、逐文件、逐图片检查输入包结构与命名、产品信息、服饰 Logo、检测报告、中文文案、单位、字体字形、色差、透明图、详情页、平台驳回词和广告合规，并生成带图片证据的飞书错误清单。用于原始数据包进入 multi-platform-image-processor 前的检查、复查、准入审核和人工处理定位。
+description: 对视觉部交付的 KOCOTREE 服装及配饰原始数据包执行多平台处理前质检，通过全包 OCR 和逐图人工复核检查输入包结构与命名、产品信息、服饰 Logo、检测报告、中文文案、单位、字体字形、色差、透明图、详情页、平台驳回词和广告合规，并生成带图片证据的飞书错误清单。用于原始数据包进入 multi-platform-image-processor 前的检查、复查、准入审核和人工处理定位。
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # 多平台原始数据包质检
@@ -25,6 +25,7 @@ metadata:
 4. [references/report-structure.md](references/report-structure.md)：飞书错误清单结构和证据字段。
 5. [references/visual-review.md](references/visual-review.md)：四边、内部接缝、逐字复核和完成校验协议。
 6. [references/material-review.md](references/material-review.md)：具体面料成分依据、逐图材质台账和判定口径。
+7. [references/ocr-review.md](references/ocr-review.md)：OCR 执行、人工校正、六类文字专项和完成条件。
 
 按任务内容读取以下专项资料：
 
@@ -35,6 +36,7 @@ metadata:
 - 目录命名脚本自动加载 [assets/configs/source-pack-naming-rules.json](assets/configs/source-pack-naming-rules.json)。
 - 字体脚本自动加载 [assets/configs/typography-profiles.json](assets/configs/typography-profiles.json)。
 - 视觉复核脚本自动加载 [assets/configs/visual-review-rules.json](assets/configs/visual-review-rules.json)。
+- OCR 脚本自动加载 [assets/configs/ocr-review-rules.json](assets/configs/ocr-review-rules.json)。
 - 驳回词扫描和完整审核校验分别加载 [assets/configs/platform-prohibited-terms.json](assets/configs/platform-prohibited-terms.json) 与 [assets/configs/audit-completion-rules.json](assets/configs/audit-completion-rules.json)。
 
 ## NAS 参考来源
@@ -74,6 +76,14 @@ uv sync --locked
 ```powershell
 uv run python .\build_inventory.py "<原始数据包路径>" --output ".\work\<任务标识>\inventory.csv" --summary-output ".\work\<任务标识>\inventory-summary.json"
 ```
+
+对全包图片执行 OCR，并将文字块、坐标、置信度、候选范围和复核图写入当前任务工作目录：
+
+```powershell
+uv run python .\run_ocr.py "<原始数据包路径>" ".\work\<任务标识>\inventory.csv" --results-output ".\work\<任务标识>\ocr-results.json" --evidence-dir ".\work\<任务标识>\ocr-review"
+```
+
+按 [references/ocr-review.md](references/ocr-review.md) 对照原图复核每张图片。修正 `visible_text_transcript`，填写 `ocr_human_verified=true`；OCR 原文与人工转录不同时，在 `ocr_review_notes` 记录修正内容。
 
 检查汇总文件的 `typography_resources` 字段。状态为 `partial` 或 `unavailable` 时，将字体专项标记为“待补证”，保留错误路径和原因，并继续其他检查。审核任务中不创建、替换或修改 Skill 资源。
 
@@ -120,7 +130,7 @@ uv run python .\scan_prohibited_terms.py ".\work\<任务标识>\inventory.csv" -
 逐条填写 `prohibited-term-audit.json` 中的 `review_status`、`review_notes` 和 `evidence_path`，再执行完整审核校验：
 
 ```powershell
-uv run python .\validate_audit_completion.py ".\work\<任务标识>\inventory.csv" --prohibited-term-audit ".\work\<任务标识>\prohibited-term-audit.json" --summary-output ".\work\<任务标识>\audit-completion-summary.json"
+uv run python .\validate_audit_completion.py ".\work\<任务标识>\inventory.csv" --ocr-results ".\work\<任务标识>\ocr-results.json" --prohibited-term-audit ".\work\<任务标识>\prohibited-term-audit.json" --summary-output ".\work\<任务标识>\audit-completion-summary.json"
 ```
 
 不要在 Skill 根目录或其他目录创建该 Skill 的虚拟环境和运行产物。台账用于登记货号、模块、文件属性、重复关系、逐图专项状态和证据状态；命名质检结果用于记录十项输入包目录与命名检查状态。自动字段只提供候选信息，不能代替逐张放大目视检查。
@@ -130,6 +140,8 @@ uv run python .\validate_audit_completion.py ".\work\<任务标识>\inventory.cs
 - 一个款一个款审核，每款完成全部模块后再开始下一款。
 - 按 `source-pack-naming-audit.json` 复核根目录、六类一级目录、素材归属、尺寸目录、颜色命名与对应关系、透明 PNG、编号解析、重复编号和系列命名一致性。
 - 每张图片必须有目视状态；台账图片总数必须等于完成目视检查的图片数。
+- 每张图片必须完成 OCR 或人工降级转录，并对照原图复核文字框和全文。
+- 复用同一份 OCR 结果完成违禁词、错别字、材质成分、尺码表、商品身份和执行标准六类文字检查。
 - 按 [references/visual-review.md](references/visual-review.md) 记录每张图片的四边状态、文字存在性和全部适用文字专项；详情模块同时记录内部接缝状态。
 - 联系表、缩略图、OCR、取色、哈希、Alpha 检查和拼接长图只能辅助定位。
 - 按商品适用平台和类目执行 [references/platform-prohibited-terms.md](references/platform-prohibited-terms.md)，逐张核对图片中的可见文字。
@@ -178,7 +190,7 @@ uv run python .\validate_audit_completion.py ".\work\<任务标识>\inventory.cs
 只有同时满足以下条件才可宣称完成：
 
 1. 已确认审核对象为视觉部原始输入包。
-2. 六个核心参考文件已完整读取，适用于当前模块和平台的专项资料已按需读取。
+2. 七个核心参考文件已完整读取，适用于当前模块和平台的专项资料已按需读取。
 3. 三个 NAS 参考目录均已读取，或已在审核前明确记录无法读取的目录和限制。
 4. 台账图片总数与逐张目视完成数一致，未检查数为零。
 5. 每款所有专项均有明确状态。
@@ -193,3 +205,4 @@ uv run python .\validate_audit_completion.py ".\work\<任务标识>\inventory.cs
 14. 平台驳回词扫描已覆盖全部可读文字，全部命中项均有处理状态、说明和适用证据。
 15. 材质文案存在性判断覆盖全部图片，全部材质文案均已关联具体面料成分依据或标记待补证。
 16. `audit-completion-summary.json` 的 `valid` 为 `true`；非零退出码时禁止创建最终飞书报告或宣称完成。
+17. OCR 图片总数等于台账图片总数，逐图人工复核数等于 OCR 图片总数，六类候选范围均有对应专项状态。
