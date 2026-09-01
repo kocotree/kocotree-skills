@@ -29,6 +29,22 @@ _FALLBACK_FABRIC_TOP_GAP = 24
 _FALLBACK_DEALER_GAP = 6
 
 
+def format_certificate_fabric_text(fabric_text: str) -> str:
+    """整理合格证需要绘制的面料文字。
+
+    功能说明：统一中英文括号；原文已包含带冒号的层级名称时直接保留，
+    只有纯成分文本才补充“面料：”前缀。
+    参数：
+        fabric_text：产品信息 Excel 中的中文面料原文。
+    返回值：
+        适合绘制到合格证的信息文本。
+    """
+    normalized = normalize_parentheses(fabric_text.strip())
+    if re.match(r"^[^\n：:]{1,12}[：:]", normalized):
+        return normalized
+    return f"面料：{normalized}"
+
+
 def _prepare_fabric_layout(
     subject: Image.Image,
     text: str,
@@ -154,12 +170,7 @@ def compose_certificate(
     if fabric_text:
         if fabric_anchor is None or fabric_fonts is None:
             raise RuntimeError("合格证加入面料时必须提供“等级”下方锚点和字体")
-        payload = re.sub(
-            r"^(?:面料|材质|成分)\s*[:：]\s*",
-            "",
-            normalize_parentheses(fabric_text.strip()),
-        )
-        text = f"面料：{payload}"
+        text = format_certificate_fabric_text(fabric_text)
         fallback_lines: list[str] | None = None
         try:
             lines, line_height = _prepare_fabric_layout(

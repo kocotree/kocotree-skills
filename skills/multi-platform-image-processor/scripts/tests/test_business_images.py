@@ -10,7 +10,11 @@ from PIL import Image, ImageChops
 
 import common.certificate_composer as certificate_composer
 from common.bartender_exporter import export_bartender_image, fingerprint
-from common.certificate_composer import compose_certificate, compose_hangtag
+from common.certificate_composer import (
+    compose_certificate,
+    compose_hangtag,
+    format_certificate_fabric_text,
+)
 from common.font_assets import load_font_assets
 from common.material_editor import (
     TextStyle,
@@ -152,6 +156,17 @@ class BusinessImageComposerTests(unittest.TestCase):
             with Image.open(output) as image:
                 self.assertEqual(image.size, (750, 1600))
             self.assertLessEqual(output.stat().st_size, 500 * 1024)
+
+    def test_certificate_fabric_text_keeps_nested_labels(self) -> None:
+        """验证分层面料原文不重复添加外层面料标签。"""
+        text = format_certificate_fabric_text(
+            "面料1：100%聚酯纤维（配料除外）\n面料2：100%聚酯纤维"
+        )
+
+        self.assertEqual(
+            text,
+            "面料1：100%聚酯纤维(配料除外)\n面料2：100%聚酯纤维",
+        )
 
     def test_certificate_uses_price_fallback_when_grade_area_is_too_narrow(self) -> None:
         """验证等级下方无法容纳时将面料放到价格下方。"""
