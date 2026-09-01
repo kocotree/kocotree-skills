@@ -2,7 +2,7 @@
 name: multi-platform-image-processor
 description: 全自动处理单个商品图片数据包，依据产品信息 Excel 检查并修正详情页中文面料，生成天猫、京东、CBME、唯品会、蜂享家＋爱库存、站外通用版图片，以及合格证图、吊牌图和尺码图，并完成内部质检。
 metadata:
-  version: "2.2.0"
+  version: "2.2.1"
 ---
 
 # 多平台图片处理
