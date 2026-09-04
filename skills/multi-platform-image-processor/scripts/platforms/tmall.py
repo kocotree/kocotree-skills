@@ -12,6 +12,7 @@ from common.scan_source_pack import (
     源目录规则,
     get_image_group,
     has_sku_business_branches,
+    resolve_source_path,
     resolve_sku_root,
 )
 
@@ -61,7 +62,12 @@ def build(
         report,
         color_names or {},
     )
-    _copy_material_images(get_image_group(source_root, "素材图", recursive=True), source_root / 源目录规则["素材图"], platform_dir / "素材图", report)
+    _copy_material_images(
+        get_image_group(source_root, "素材图", recursive=True),
+        resolve_source_path(source_root, "素材图"),
+        platform_dir / "素材图",
+        report,
+    )
 
     detail_dir = platform_dir / "790详情页"
     detail_outputs: list[Path] = []

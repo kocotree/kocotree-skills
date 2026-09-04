@@ -27,18 +27,27 @@ logger = logging.getLogger(__name__)
     "详情下": Path("详情") / "静态" / "下",
     "素材图": Path("素材图"),
 }
+源目录别名 = {
+    "素材图": (Path("素材图"), Path("场景图")),
+}
 
 
 def resolve_source_path(source_root: Path, key: str) -> Path:
-    """解析标准素材目录，并允许 SKU 根目录使用任意大小写。
+    """解析素材目录的实际路径。
 
     参数：
         source_root：数据包根目录。
         key：`源目录规则` 中的素材分组名称。
     返回值：
-        当前文件系统中实际使用的素材目录路径。
+        当前文件系统中实际使用的素材目录路径；未找到时返回标准路径。
     """
     rel = 源目录规则[key]
+    for candidate in 源目录别名.get(key, ()):
+        path = source_root / candidate
+        if path.is_dir():
+            if candidate != rel:
+                logger.info("输入素材目录使用别名 key=%s path=%r", key, str(path))
+            return path
     if not rel.parts or rel.parts[0].casefold() != "sku":
         return source_root / rel
     sku_root = resolve_sku_root(source_root)

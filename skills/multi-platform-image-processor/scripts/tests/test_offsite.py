@@ -8,9 +8,10 @@ from PIL import Image
 
 from common import new_report
 from common.quality_audit import audit_sku_branch_outputs
+from common.scan_source_pack import get_image_group, resolve_source_path
 from platforms.fengxiang_aikucun import _copy_sku800_tree
 from platforms.offsite import _select_offsite_sku_sources, _sku_output_path, derive
-from platforms.tmall import _copy_sku_tree
+from platforms.tmall import _copy_material_images, _copy_sku_tree
 
 
 class OffsiteTests(unittest.TestCase):
@@ -35,24 +36,48 @@ class OffsiteTests(unittest.TestCase):
         self.assertEqual(output, output_dir / "款式甲" / "800" / "规格一.jpg")
 
     def test_nested_material_image_is_generated(self) -> None:
+        """验证站外将素材图和场景图统一输出为素材图。"""
+        for source_directory in ("素材图", "场景图"):
+            with self.subTest(source_directory=source_directory):
+                with TemporaryDirectory() as temp_dir_value:
+                    temp_dir = Path(temp_dir_value)
+                    source_root = temp_dir / "数据包"
+                    material = source_root / source_directory / "子目录" / "图片.jpg"
+                    material.parent.mkdir(parents=True)
+                    Image.new("RGB", (80, 60), (210, 220, 230)).save(material)
+                    output_root = temp_dir / "输出"
+                    report = new_report(source_root, None, output_root)
+
+                    platform_dir = derive(source_root, None, output_root, report, {})
+
+                    self.assertTrue((platform_dir / "素材图" / "子目录" / "图片.jpg").exists())
+                    self.assertTrue((platform_dir / "详情页").is_dir())
+                    self.assertTrue((platform_dir / "sku").is_dir())
+                    self.assertTrue((platform_dir / "白底图").is_dir())
+                    self.assertTrue((platform_dir / "白底图＋logo").is_dir())
+                    self.assertTrue((platform_dir / "透明图").is_dir())
+                    self.assertTrue((platform_dir / "主图").is_dir())
+                    self.assertFalse(report["失败项"])
+
+    def test_tmall_scene_images_are_output_as_material_images(self) -> None:
+        """验证天猫将输入场景图输出到素材图目录。"""
         with TemporaryDirectory() as temp_dir_value:
-            temp_dir = Path(temp_dir_value)
-            source_root = temp_dir / "数据包"
-            material = source_root / "素材图" / "子目录" / "图片.jpg"
-            material.parent.mkdir(parents=True)
-            Image.new("RGB", (80, 60), (210, 220, 230)).save(material)
-            output_root = temp_dir / "输出"
-            report = new_report(source_root, None, output_root)
+            root = Path(temp_dir_value)
+            source_root = root / "数据包"
+            source = source_root / "场景图" / "子目录" / "图片.jpg"
+            source.parent.mkdir(parents=True)
+            Image.new("RGB", (80, 60), (210, 220, 230)).save(source)
+            report = new_report(source_root, None, root / "输出")
+            output_dir = root / "天猫" / "素材图"
 
-            platform_dir = derive(source_root, None, output_root, report, {})
+            _copy_material_images(
+                get_image_group(source_root, "素材图", recursive=True),
+                resolve_source_path(source_root, "素材图"),
+                output_dir,
+                report,
+            )
 
-            self.assertTrue((platform_dir / "素材图" / "子目录" / "图片.jpg").exists())
-            self.assertTrue((platform_dir / "详情页").is_dir())
-            self.assertTrue((platform_dir / "sku").is_dir())
-            self.assertTrue((platform_dir / "白底图").is_dir())
-            self.assertTrue((platform_dir / "白底图＋logo").is_dir())
-            self.assertTrue((platform_dir / "透明图").is_dir())
-            self.assertTrue((platform_dir / "主图").is_dir())
+            self.assertTrue((output_dir / "子目录" / "图片.jpg").is_file())
             self.assertFalse(report["失败项"])
 
     def test_gift_split_uses_only_no_gift_sku(self) -> None:
