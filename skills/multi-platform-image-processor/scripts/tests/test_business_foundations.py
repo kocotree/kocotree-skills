@@ -27,7 +27,9 @@ from common.product_matcher import (
 )
 from common.settings import resolve_business_paths
 from common.scan_source_pack import get_sku800_recursive
-from common.utils import build_platform_directory_names, 平台模板目录名
+from common.utils import build_platform_directory_names, new_report, 平台模板目录名
+from platforms.jd import _build_main_images as build_jd_main_images
+from platforms.tmall import _build_main_images as build_tmall_main_images
 
 
 class BusinessSettingsTests(unittest.TestCase):
@@ -83,8 +85,25 @@ class BusinessSettingsTests(unittest.TestCase):
         """验证京东静态模板使用产品身份占位目录名。"""
         self.assertEqual(平台模板目录名["jd"], "产品货号 产品名称-京东")
         template_root = Path(__file__).resolve().parents[2] / "template"
-        self.assertTrue((template_root / 平台模板目录名["jd"]).is_dir())
+        jd_template = template_root / 平台模板目录名["jd"]
+        self.assertTrue(jd_template.is_dir())
         self.assertFalse((template_root / "京东").exists())
+        self.assertTrue((jd_template / "1440主图").is_dir())
+        self.assertTrue((jd_template / "1080主图").is_dir())
+        self.assertFalse((jd_template / "800主图").exists())
+        self.assertFalse((jd_template / "750主图").exists())
+
+    def test_tmall_template_contains_high_resolution_main_images(self) -> None:
+        """验证天猫模板包含两组高清主图目录。"""
+        main_template = (
+            Path(__file__).resolve().parents[2]
+            / "template"
+            / "天猫通用版"
+            / "主图"
+        )
+
+        self.assertTrue((main_template / "主图1440").is_dir())
+        self.assertTrue((main_template / "主图1440-1920").is_dir())
 
     def test_white_and_transparent_images_use_sku_color_names(self) -> None:
         """验证数字素材通过视觉映射使用 SKU 颜色名称。"""
@@ -196,6 +215,55 @@ class BusinessSettingsTests(unittest.TestCase):
             actual,
             {"详情页", "sku", "白底图", "白底图＋logo", "透明图", "主图", "素材图"},
         )
+
+
+class PlatformMainImageTests(unittest.TestCase):
+    """验证天猫和京东高清主图的来源与尺寸。"""
+
+    @staticmethod
+    def _create_source(path: Path, size: tuple[int, int], color: str) -> None:
+        """创建测试主图。"""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", size, color).save(path)
+
+    def _assert_size(self, path: Path, size: tuple[int, int]) -> None:
+        """断言图片尺寸。"""
+        with Image.open(path) as image:
+            self.assertEqual(image.size, size)
+
+    def test_platforms_generate_high_resolution_main_images(self) -> None:
+        """验证原始 1440 主图和 750 主图生成对应平台尺寸。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            source_root = root / "数据包"
+            self._create_source(source_root / "主图/800/1.jpg", (800, 800), "blue")
+            self._create_source(source_root / "主图/750/1.jpg", (750, 1000), "green")
+            self._create_source(source_root / "主图/1440/1.jpg", (1440, 1440), "red")
+            report = new_report(source_root, None, root / "输出")
+
+            build_tmall_main_images(source_root, root / "天猫", report)
+            build_jd_main_images(source_root, root / "京东", report)
+
+            self._assert_size(root / "天猫/主图/主图1440/1.jpg", (1440, 1440))
+            self._assert_size(root / "天猫/主图/主图1440-1920/1.jpg", (1440, 1920))
+            self._assert_size(root / "京东/1440主图/1.jpg", (1440, 1440))
+            self._assert_size(root / "京东/1080主图/1.jpg", (1080, 1440))
+            self.assertFalse(report["失败项"])
+
+    def test_platforms_use_800_main_image_when_1440_is_missing(self) -> None:
+        """验证缺少 1440 原图时使用 800 主图生成。"""
+        with TemporaryDirectory() as temp_dir_value:
+            root = Path(temp_dir_value)
+            source_root = root / "数据包"
+            self._create_source(source_root / "主图/800/1.jpg", (800, 800), "blue")
+            report = new_report(source_root, None, root / "输出")
+
+            build_tmall_main_images(source_root, root / "天猫", report)
+            build_jd_main_images(source_root, root / "京东", report)
+
+            self._assert_size(root / "天猫/主图/主图1440/1.jpg", (1440, 1440))
+            self._assert_size(root / "京东/1440主图/1.jpg", (1440, 1440))
+            self.assertFalse(report["失败项"])
 
 
 class ProductInfoTests(unittest.TestCase):

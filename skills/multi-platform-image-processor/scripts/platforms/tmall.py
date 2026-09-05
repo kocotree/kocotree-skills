@@ -7,7 +7,11 @@ from tempfile import TemporaryDirectory
 from common import add_failure, add_review_suggestion, ensure_dir
 from common.color_naming import color_output_relative_path
 from common.detail_page_slice import generate_sequential_detail_pages, prepare_ordered_detail_sources
-from common.image_resize_compress import process_jpg_original_or_compress, process_png_original_or_compress
+from common.image_resize_compress import (
+    process_jpg_canvas,
+    process_jpg_original_or_compress,
+    process_png_original_or_compress,
+)
 from common.scan_source_pack import (
     源目录规则,
     get_image_group,
@@ -43,8 +47,7 @@ def build(
     """
     platform_dir = ensure_dir(output_root / 平台)
 
-    _batch_jpg(get_image_group(source_root, "主图800"), platform_dir / "主图" / "800主图", "主图\\800主图", report)
-    _batch_jpg(get_image_group(source_root, "主图750"), platform_dir / "主图" / "750 1000主图", "主图\\750 1000主图", report)
+    _build_main_images(source_root, platform_dir, report)
     _copy_sku_tree(source_root, platform_dir / "sku", report)
     _batch_color_jpg(
         get_image_group(source_root, "白底图", recursive=True),
@@ -108,6 +111,65 @@ def _batch_jpg(sources: list[Path], output_dir: Path, usage: str, report: dict) 
     ensure_dir(output_dir)
     for source in sources:
         process_jpg_original_or_compress(source, output_dir / f"{source.stem}.jpg", 500 * 1024, report, 平台, usage)
+
+
+def _batch_jpg_canvas(
+    sources: list[Path],
+    output_dir: Path,
+    size: tuple[int, int],
+    usage: str,
+    report: dict,
+) -> None:
+    ensure_dir(output_dir)
+    for source in sources:
+        process_jpg_canvas(
+            source,
+            output_dir / f"{source.stem}.jpg",
+            size,
+            500 * 1024,
+            report,
+            平台,
+            usage,
+        )
+
+
+def _build_main_images(source_root: Path, platform_dir: Path, report: dict) -> None:
+    """生成天猫通用版的四组主图。
+
+    功能说明：保留 800×800 和 750×1000 主图，生成 1440×1440
+    和 1440×1920 主图；1440 源图缺失时使用 800 主图生成。
+    参数：
+        source_root：产品数据包根目录。
+        platform_dir：天猫通用版输出目录。
+        report：完整处理报告。
+    返回值：
+        无。
+    """
+    main_dir = platform_dir / "主图"
+    sources_800 = get_image_group(source_root, "主图800")
+    sources_750 = get_image_group(source_root, "主图750")
+    sources_1440 = get_image_group(source_root, "主图1440")
+    _batch_jpg(sources_800, main_dir / "800主图", "主图\\800主图", report)
+    _batch_jpg(sources_750, main_dir / "750 1000主图", "主图\\750 1000主图", report)
+    if sources_1440:
+        logger.info("天猫1440主图使用原数据包素材 count=%d", len(sources_1440))
+        _batch_jpg(sources_1440, main_dir / "主图1440", "主图\\主图1440", report)
+    else:
+        logger.info("天猫1440主图使用800主图生成 count=%d", len(sources_800))
+        _batch_jpg_canvas(
+            sources_800,
+            main_dir / "主图1440",
+            (1440, 1440),
+            "主图\\主图1440",
+            report,
+        )
+    _batch_jpg_canvas(
+        sources_750,
+        main_dir / "主图1440-1920",
+        (1440, 1920),
+        "主图\\主图1440-1920",
+        report,
+    )
 
 
 def _copy_sku_tree(source_root: Path, output_dir: Path, report: dict) -> None:

@@ -153,6 +153,10 @@ def _check_fengxiang_names(directory: Path, report: dict) -> None:
 def _audit_tmall(root: Path, report: dict) -> None:
     for path in list_images(root, recursive=True):
         _check_file_size(path, 500, report)
+    for path in list_images(root / "主图" / "主图1440"):
+        _check_dimensions(path, 1440, 1440, report, "天猫主图尺寸不符合1440x1440")
+    for path in list_images(root / "主图" / "主图1440-1920"):
+        _check_dimensions(path, 1440, 1920, report, "天猫主图尺寸不符合1440x1920")
     for path in list_images(root / "790详情页"):
         _check_dimensions(path, 790, None, report, "天猫详情页宽度不符合790px")
         info = image_info(path)
@@ -174,6 +178,10 @@ def _audit_cbme(root: Path, report: dict) -> None:
 def _audit_jd(root: Path, report: dict) -> None:
     for path in list_images(root, recursive=True):
         _check_file_size(path, 500, report)
+    for path in list_images(root / "1440主图"):
+        _check_dimensions(path, 1440, 1440, report, "京东主图尺寸不符合1440x1440")
+    for path in list_images(root / "1080主图"):
+        _check_dimensions(path, 1080, 1440, report, "京东主图尺寸不符合1080x1440")
     for path in list_images(root / "透明图", recursive=True):
         _check_dimensions(path, 800, 800, report, "京东透明图尺寸不符合800x800")
         info = image_info(path)
