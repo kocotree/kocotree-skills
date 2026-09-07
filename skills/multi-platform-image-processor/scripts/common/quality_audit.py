@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from .color_text import rename_color_file
 
 from .scan_source_pack import (
     get_sku800_recursive,
@@ -67,7 +68,7 @@ def audit_sku_branch_outputs(
         report,
     )
     _check_relative_image_set(
-        {path.relative_to(sku_root).with_suffix(".jpg") for path in get_sku800_recursive(source_root)},
+        {rename_color_file(path.relative_to(sku_root).with_suffix(".jpg")) for path in get_sku800_recursive(source_root)},
         fengxiang_root,
         "蜂享家＋爱库存SKU业务分支与源目录不一致",
         report,

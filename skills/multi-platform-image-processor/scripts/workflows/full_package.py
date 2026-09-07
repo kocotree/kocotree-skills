@@ -110,6 +110,7 @@ def run_full_workflow(args: Any) -> int:
                 detail_overrides=detail_overrides,
                 color_name_plan=context.get("颜色命名"),
                 delivery_timestamp=workspace.timestamp,
+                color_text_plan=context.get("蜂享家爱库存颜色改字", []),
             )
         if platform_code != 0:
             logger.warning("平台处理存在失败项 code=%d", platform_code)

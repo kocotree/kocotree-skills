@@ -74,6 +74,7 @@ def run_platform_processing(
     detail_overrides: dict[Path, Path] | None = None,
     color_name_plan: object | None = None,
     delivery_timestamp: str | None = None,
+    color_text_plan: list[dict] | None = None,
 ) -> tuple[int, Path]:
     """处理单个产品并生成六平台图片。
 
@@ -88,6 +89,7 @@ def run_platform_processing(
         detail_overrides：原始详情图到临时面料修正版的映射。
         color_name_plan：白底图、透明图相对路径到 SKU 颜色名称的视觉映射。
         delivery_timestamp：内部暂存与最终交付共用的时间戳。
+        color_text_plan：蜂享家＋爱库存专用颜色文字定位项。
     返回值：
         退出码和实际输出目录。
     """
@@ -134,7 +136,10 @@ def run_platform_processing(
     derive_cbme(source, tmall_dir, output, report)
     derive_jd(source, tmall_dir, platform_directories["jd"], report, color_names)
     derive_vip(source, tmall_dir, output, report, color_names)
-    derive_fengxiang_aikucun(source, tmall_dir, output, report, color_names)
+    derive_fengxiang_aikucun(
+        source, tmall_dir, output, report, color_names,
+        color_text_plan=color_text_plan, detail_plan=detail_plan, detail_overrides=detail_overrides,
+    )
     derive_offsite(source, template, output, report, color_names)
 
     run_quality_audit(report, platform_directories)
