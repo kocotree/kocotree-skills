@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from PIL import Image, ImageChops, ImageDraw
 
-from common.color_text import prepare_color_overrides, rename_color_file, replace_color_glyphs
+from common.color_text import _clean_glyph_mask, prepare_color_overrides, rename_color_file, replace_color_glyphs
 from common.utils import new_report
 from platforms.fengxiang_aikucun import _copy_sku800_tree, derive
 
@@ -109,6 +109,35 @@ class ColorTextTests(unittest.TestCase):
         """验证没有命中词时只透传现有材质修正映射。"""
         original = {Path("source"): Path("material")}
         self.assertEqual(prepare_color_overrides(Path("root"), [], Path("staging"), original), original)
+
+    def test_mask_keeps_separate_strokes_and_antialiasing(self):
+        """验证多个独立笔画和原透明度保留，邻字碎片被清除。"""
+        mask = Image.new("L", (50, 50))
+        draw = ImageDraw.Draw(mask)
+        draw.rectangle((20, 5, 24, 40), fill=255)
+        draw.rectangle((5, 15, 8, 30), fill=180)
+        draw.rectangle((35, 15, 38, 30), fill=200)
+        mask.putpixel((19, 10), 25)
+        expected = mask.copy()
+        draw.rectangle((48, 25, 48, 29), fill=160)
+        mask.putpixel((49, 27), 20)
+        cleaned = _clean_glyph_mask(mask)
+        self.assertEqual(cleaned.tobytes(), expected.tobytes())
+        self.assertEqual(mask.getpixel((48, 25)), 160)
+
+    def test_pipeline_removes_fragment_inside_reference_box(self):
+        """验证实际改字流程清除框内邻字碎片并保留各笔画。"""
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            source, item = self.fixture(root)
+            with Image.open(source) as opened:
+                image = opened.copy()
+            expected = image.crop(tuple(item["参考字区域"]))
+            image.putpixel((69, 25), (0, 0, 0))
+            image.save(source)
+            output = replace_color_glyphs(source, root / "output.png", [item], root)
+            with Image.open(output) as changed:
+                self.assertEqual(changed.crop(tuple(item["原字区域"])).tobytes(), expected.tobytes())
 
     def test_detail_edit_happens_before_platform_slicing(self):
         """验证详情实际派生使用颜色修正版且共享天猫图不变。"""

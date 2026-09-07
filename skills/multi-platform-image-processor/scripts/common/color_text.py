@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from statistics import median
 
-from PIL import Image
+from PIL import Image, ImageChops, ImageFilter
 
 from .settings import config_root, load_json_config
 
@@ -66,6 +66,46 @@ def _glyph(image: Image.Image, box: tuple[int, int, int, int]) -> tuple[Image.Im
     return mask, color
 
 
+def _clean_glyph_mask(mask: Image.Image) -> Image.Image:
+    """提取参考字的主要笔画，排除独立小碎片并保留抗锯齿边缘。
+
+    参数：
+        mask：参考字形的灰度透明度蒙版。
+    返回值：
+        保持原尺寸和笔画位置的清理后蒙版。
+    """
+    pixels = mask.load()
+    points = {(x, y) for y in range(mask.height) for x in range(mask.width)
+              if pixels[x, y] >= 45}
+    components = []
+    while points:
+        seed = points.pop()
+        stack, component = [seed], [seed]
+        while stack:
+            x, y = stack.pop()
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    neighbor = (x + dx, y + dy)
+                    if neighbor in points:
+                        points.remove(neighbor)
+                        stack.append(neighbor)
+                        component.append(neighbor)
+        components.append(component)
+    if not components:
+        return mask.copy()
+    largest = max(map(len, components))
+    retained = [part for part in components if len(part) >= largest * .1]
+    support = Image.new("L", mask.size)
+    for part in retained:
+        for point in part:
+            support.putpixel(point, 255)
+    # 扩展一像素仅用于保留原蒙版中的抗锯齿透明度，笔画本身不加粗。
+    support = support.filter(ImageFilter.MaxFilter(3))
+    logger.info("参考字形提取 components=%s retained=%s",
+                sorted(map(len, components)), sorted(map(len, retained)))
+    return ImageChops.multiply(mask, support)
+
+
 def replace_color_glyphs(source: Path, output: Path, items: list[dict], source_root: Path) -> Path:
     """用原图同字体、同字号的参考字形替换颜色中的目标字。
 
@@ -91,6 +131,7 @@ def replace_color_glyphs(source: Path, output: Path, items: list[dict], source_r
         with Image.open(reference_path) as opened:
             reference = opened.convert("RGB")
         mask, _ = _glyph(reference, reference_box)
+        mask = _clean_glyph_mask(mask)
         background = _background(original, box)
         if mask.size != background.size:
             raise ValueError("参考字与目标字应使用同字号、同尺寸字框")
