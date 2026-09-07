@@ -1,8 +1,8 @@
 ---
 name: multi-platform-source-pack-audit
-description: 对视觉部交付的 KOCOTREE 服装及配饰原始数据包执行多平台处理前质检，通过全包 OCR 和逐图人工复核检查输入包结构与命名、产品信息、服饰 Logo、检测报告、中文文案、单位、字体字形、色差、透明图、详情页、平台驳回词和广告合规，并生成带图片证据的飞书错误清单。用于原始数据包进入 multi-platform-image-processor 前的检查、复查、准入审核和人工处理定位。
+description: 对视觉部交付的 KOCOTREE 服装及配饰原始数据包执行多平台处理前质检，优先读取飞书多维表商品资料，通过全包 OCR 和逐图人工复核检查输入包结构与命名、产品信息、服饰 Logo、检测报告、中文文案、单位、字体字形、色差、透明图、详情页、平台驳回词和广告合规，并生成带图片证据的飞书错误清单。用于原始数据包进入 multi-platform-image-processor 前的检查、复查、准入审核和人工处理定位。
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
 ---
 
 # 多平台原始数据包质检
@@ -19,13 +19,14 @@ metadata:
 
 每次审核先读取以下核心资料：
 
-1. [references/source-pack-rules.md](references/source-pack-rules.md)：原始输入包判定规则和排除项。
-2. [references/quality-check-coverage.md](references/quality-check-coverage.md)：17 项基础问题类型和全包专项。
-3. [references/execution-checklist.md](references/execution-checklist.md)：逐款、逐模块完成条件。
-4. [references/report-structure.md](references/report-structure.md)：飞书错误清单结构和证据字段。
-5. [references/visual-review.md](references/visual-review.md)：四边、内部接缝、逐字复核和完成校验协议。
-6. [references/material-review.md](references/material-review.md)：具体面料成分依据、逐图材质台账和判定口径。
-7. [references/ocr-review.md](references/ocr-review.md)：OCR 执行、人工校正、六类文字专项和完成条件。
+1. [references/reference-data-sources.md](references/reference-data-sources.md)：多维表优先、NAS 回退、用户身份和附件读取流程。
+2. [references/source-pack-rules.md](references/source-pack-rules.md)：原始输入包判定规则和排除项。
+3. [references/quality-check-coverage.md](references/quality-check-coverage.md)：17 项基础问题类型和全包专项。
+4. [references/execution-checklist.md](references/execution-checklist.md)：逐款、逐模块完成条件。
+5. [references/report-structure.md](references/report-structure.md)：飞书错误清单结构和证据字段。
+6. [references/visual-review.md](references/visual-review.md)：四边、内部接缝、逐字复核和完成校验协议。
+7. [references/material-review.md](references/material-review.md)：具体面料成分依据、逐图材质台账和判定口径。
+8. [references/ocr-review.md](references/ocr-review.md)：OCR 执行、人工校正、六类文字专项和完成条件。
 
 按任务内容读取以下专项资料：
 
@@ -37,17 +38,18 @@ metadata:
 - 字体脚本自动加载 [assets/configs/typography-profiles.json](assets/configs/typography-profiles.json)。
 - 视觉复核脚本自动加载 [assets/configs/visual-review-rules.json](assets/configs/visual-review-rules.json)。
 - OCR 脚本自动加载 [assets/configs/ocr-review-rules.json](assets/configs/ocr-review-rules.json)。
+- 多维表读取脚本自动加载 [assets/configs/reference-data-sources.json](assets/configs/reference-data-sources.json)。
 - 驳回词扫描和完整审核校验分别加载 [assets/configs/platform-prohibited-terms.json](assets/configs/platform-prohibited-terms.json) 与 [assets/configs/audit-completion-rules.json](assets/configs/audit-completion-rules.json)。
 
-## NAS 参考来源
+## 商品参考来源
 
-每款审核前通过 Windows 网络共享读取并匹配以下三个目录：
+每款先按 [商品参考资料读取](references/reference-data-sources.md) 使用飞书用户身份查询多维表。多维表中的有效字段直接作为当前款依据，只在记录不存在或目标字段为 `null`、空字符串、`/` 时读取对应 NAS：
 
-- 产品信息：`\\192.168.110.20\浙江酷趣\产品中心\产品信息`
-- 服饰 Logo 参考素材：`\\192.168.110.20\视觉部-同步\2-静物图\静物拍摄2026`
-- 检测报告：`\\192.168.110.20\浙江酷趣\产品中心\检测报告`
+- 产品信息缺失字段：`\\192.168.110.20\浙江酷趣\产品中心\产品信息`
+- 检测报告附件缺失：`\\192.168.110.20\浙江酷趣\产品中心\检测报告`
+- 服饰 Logo 参考素材：`\\192.168.110.20\视觉部-同步\2-静物图\静物拍摄2026`，每款均读取。
 
-使用文件系统工具直接访问以上 UNC 路径。若因网络未连接、共享凭据缺失、无权限或目录不存在而无法读取，在依赖该来源进行判断前说明具体目录和原因，将其标记为“未读取”。未读取的来源不得作为通过依据，相关结论标记为“待补证”。
+所有多维表命令显式使用 `--as user`。多维表无法访问属于依赖失败，先恢复用户授权或 Base 只读权限，不使用 NAS 绕过。需要访问 NAS 时使用文件系统工具直接读取 UNC 路径；无法读取的来源不得作为通过依据，相关结论标记为“待补证”。
 
 ## 执行流程
 
@@ -58,7 +60,7 @@ metadata:
 - 确认输入确为视觉部原始包，不以目录名称代替内容判断。
 - 记录缺少的产品信息、Logo、检测报告或平台规则，不静默忽略。
 
-### 2. 建立全量台账
+### 2. 获取参考资料并建立全量台账
 
 所有 Python 脚本统一在 Skill 的 `scripts` 目录运行。`uv` 项目文件、锁文件和虚拟环境分别固定为 `scripts/pyproject.toml`、`scripts/uv.lock` 和 `scripts/.venv`。
 
@@ -70,6 +72,14 @@ metadata:
 Set-Location "<Skill目录>/scripts"
 uv sync --locked
 ```
+
+按货号读取多维表商品资料和附件：
+
+```powershell
+uv run python .\fetch_base_reference_data.py "<KQ货号>" --output-dir ".\work\<任务标识>\reference-data" --download-attachments
+```
+
+读取 `base-reference-data.json`，确认款表、码表和附件来源表只匹配当前款；按 `missing_fields` 与 `nas_fallback_required` 访问缺失字段对应的 NAS。`logo_reference` 每款均为 `true`。脚本非零退出时先处理用户授权或资源权限，禁止将依赖商品资料的专项判为通过。
 
 在同一目录生成台账：
 
@@ -99,7 +109,7 @@ uv run python .\validate_source_pack_naming.py "<原始数据包路径>" --outpu
 uv run python .\generate_edge_review_sheets.py "<原始数据包路径>" --output-dir ".\work\<任务标识>\edge-review"
 ```
 
-产品信息为旧版 `.xls` 工作簿时，使用锁定环境中的 `xlrd` 只读提取工作表：
+多维表缺失产品信息字段且 NAS 补充文件为旧版 `.xls` 工作簿时，使用锁定环境中的 `xlrd` 只读提取工作表：
 
 ```powershell
 uv run python -X utf8 .\extract_xls.py "<产品信息表.xls>" --output ".\work\<任务标识>\product-info.json"
@@ -130,7 +140,7 @@ uv run python .\scan_prohibited_terms.py ".\work\<任务标识>\inventory.csv" -
 逐条填写 `prohibited-term-audit.json` 中的 `review_status`、`review_notes` 和 `evidence_path`，再执行完整审核校验：
 
 ```powershell
-uv run python .\validate_audit_completion.py ".\work\<任务标识>\inventory.csv" --ocr-results ".\work\<任务标识>\ocr-results.json" --prohibited-term-audit ".\work\<任务标识>\prohibited-term-audit.json" --summary-output ".\work\<任务标识>\audit-completion-summary.json"
+uv run python .\validate_audit_completion.py ".\work\<任务标识>\inventory.csv" --reference-data ".\work\<任务标识>\reference-data\base-reference-data.json" --ocr-results ".\work\<任务标识>\ocr-results.json" --prohibited-term-audit ".\work\<任务标识>\prohibited-term-audit.json" --summary-output ".\work\<任务标识>\audit-completion-summary.json"
 ```
 
 不要在 Skill 根目录或其他目录创建该 Skill 的虚拟环境和运行产物。台账用于登记货号、模块、文件属性、重复关系、逐图专项状态和证据状态；命名质检结果用于记录十项输入包目录与命名检查状态。自动字段只提供候选信息，不能代替逐张放大目视检查。
@@ -162,10 +172,11 @@ uv run python .\validate_audit_completion.py ".\work\<任务标识>\inventory.cs
 
 ### 5. 交叉比对
 
-- 产品信息：核对货号、品名、品类、颜色、尺码、执行标准、安全类别、等级、成分名称、百分比、部位和限定语。具体面料成分信息表列出纤维明细时，图片中的“其他”不能替代明细。
-- 服饰 Logo：核对形状、颜色、比例、方向、版本、字样、组合关系和落位。
-- 检测报告：确认报告对应当前款和样品，再核对项目、数值、单位、结论、适用范围、限定条件和编号。
-- 每款分别记录三项来源的读取与匹配状态；无差异也明确写“已核对，未发现不一致”。
+- 多维表产品信息：核对货号、品名、品类、颜色、尺码、执行标准、安全类别、等级、成分名称、百分比、部位和限定语。具体面料成分信息列出纤维明细时，图片中的“其他”不能替代明细。
+- 多维表检测报告附件：确认报告对应当前款和样品，再核对项目、数值、单位、结论、适用范围、限定条件和编号。
+- NAS 补充：仅补充 `base-reference-data.json` 标记缺失的产品字段或检测报告；多维表已有有效值的字段无需查询 NAS。
+- 服饰 Logo NAS：核对形状、颜色、比例、方向、版本、字样、组合关系和落位。
+- 每款记录多维表三张表、实际触发的 NAS 回退和 Logo NAS 的读取与匹配状态；无差异也明确写“已核对，未发现不一致”。
 
 ### 6. 证据与结论
 
@@ -190,19 +201,20 @@ uv run python .\validate_audit_completion.py ".\work\<任务标识>\inventory.cs
 只有同时满足以下条件才可宣称完成：
 
 1. 已确认审核对象为视觉部原始输入包。
-2. 七个核心参考文件已完整读取，适用于当前模块和平台的专项资料已按需读取。
-3. 三个 NAS 参考目录均已读取，或已在审核前明确记录无法读取的目录和限制。
-4. 台账图片总数与逐张目视完成数一致，未检查数为零。
-5. 每款所有专项均有明确状态。
-6. 所有视觉问题都有相邻、准确的图片证据。
-7. 详情页四边已完成二次复核。
-8. 平台驳回词命中项已全部写入飞书文档并附证据。
-9. 平台图片规格不符合项已全部写入飞书文档。
-10. 阿里妈妈方圆体 SemiBold 字体文件和标准字形参考图已成功读取。
-11. 详情页数字 `1` 的发现数量等于已检查数量，未检查数量为零；异常位置已全部写入台账和飞书文档。
-12. 飞书文档已反向读取验证。
-13. 原始包目录与文件命名十项检查均已完成，所有不符合项已写入飞书文档。
-14. 平台驳回词扫描已覆盖全部可读文字，全部命中项均有处理状态、说明和适用证据。
-15. 材质文案存在性判断覆盖全部图片，全部材质文案均已关联具体面料成分依据或标记待补证。
-16. `audit-completion-summary.json` 的 `valid` 为 `true`；非零退出码时禁止创建最终飞书报告或宣称完成。
-17. OCR 图片总数等于台账图片总数，逐图人工复核数等于 OCR 图片总数，六类候选范围均有对应专项状态。
+2. 八个核心参考文件已完整读取，适用于当前模块和平台的专项资料已按需读取。
+3. 多维表用户身份和 Base 访问均已验证，款表、码表与附件来源表已按货号完成匹配。
+4. 多维表缺失字段对应的产品信息或检测报告 NAS 已读取，且每款 Logo NAS 已读取；无法读取的来源已记录限制并将受影响专项标记为待补证。
+5. 台账图片总数与逐张目视完成数一致，未检查数为零。
+6. 每款所有专项均有明确状态。
+7. 所有视觉问题都有相邻、准确的图片证据。
+8. 详情页四边已完成二次复核。
+9. 平台驳回词命中项已全部写入飞书文档并附证据。
+10. 平台图片规格不符合项已全部写入飞书文档。
+11. 阿里妈妈方圆体 SemiBold 字体文件和标准字形参考图已成功读取。
+12. 详情页数字 `1` 的发现数量等于已检查数量，未检查数量为零；异常位置已全部写入台账和飞书文档。
+13. 飞书文档已反向读取验证。
+14. 原始包目录与文件命名十项检查均已完成，所有不符合项已写入飞书文档。
+15. 平台驳回词扫描已覆盖全部可读文字，全部命中项均有处理状态、说明和适用证据。
+16. 材质文案存在性判断覆盖全部图片，全部材质文案均已关联具体面料成分依据或标记待补证。
+17. `audit-completion-summary.json` 的 `valid` 为 `true`；非零退出码时禁止创建最终飞书报告或宣称完成。
+18. OCR 图片总数等于台账图片总数，逐图人工复核数等于 OCR 图片总数，六类候选范围均有对应专项状态。

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""校验视觉复核、OCR、平台驳回词和材质成分审核是否完整闭环。"""
+"""校验商品资料、视觉复核、OCR、平台驳回词和材质审核是否完整闭环。"""
 
 from __future__ import annotations
 
@@ -38,6 +38,12 @@ DEFAULT_COMPLETION_CONFIG = (
     / "assets"
     / "configs"
     / "audit-completion-rules.json"
+)
+DEFAULT_REFERENCE_CONFIG = (
+    Path(__file__).resolve().parent.parent
+    / "assets"
+    / "configs"
+    / "reference-data-sources.json"
 )
 MATERIAL_FIELDS = {
     "material_claim_presence_status",
@@ -247,6 +253,236 @@ def add_error(
     if row is not None:
         item["row"] = row
     errors.append(item)
+
+
+def validate_reference_data(
+    reference_data_path: Path,
+    reference_config_path: Path,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """校验多维表商品资料、附件下载和 NAS 回退状态。
+
+    参数：
+        reference_data_path: 当前款 `base-reference-data.json` 路径。
+        reference_config_path: 本次审核使用的商品资料来源配置路径。
+
+    返回值：
+        商品资料统计和逐项错误列表。
+    """
+
+    data = json.loads(reference_data_path.resolve().read_text(encoding="utf-8"))
+    errors: list[dict[str, Any]] = []
+    status = str(data.get("status", ""))
+    if status not in {"matched", "not_found"}:
+        add_error(
+            errors,
+            "reference_data",
+            "",
+            "status",
+            "多维表商品资料状态必须为 matched 或 not_found",
+        )
+    expected_hash = calculate_file_sha256(reference_config_path.resolve())
+    if data.get("config_sha256") != expected_hash:
+        add_error(
+            errors,
+            "reference_data",
+            "",
+            "config_sha256",
+            "商品资料结果与当前数据源配置不一致，请重新读取",
+        )
+
+    identity = data.get("identity")
+    if not isinstance(identity, dict):
+        identity = {}
+        add_error(
+            errors,
+            "reference_data",
+            "",
+            "identity",
+            "缺少飞书用户身份验证结果",
+        )
+    if (
+        identity.get("status") != "ready"
+        or identity.get("verified") is not True
+        or identity.get("token_status") != "valid"
+    ):
+        add_error(
+            errors,
+            "reference_data",
+            "",
+            "identity",
+            "飞书用户身份必须为已验证且令牌有效",
+        )
+
+    base = data.get("base")
+    if not isinstance(base, dict):
+        base = {}
+        add_error(
+            errors,
+            "reference_data",
+            "",
+            "base",
+            "缺少多维表访问结果",
+        )
+    if base.get("access_status") != "ready":
+        add_error(
+            errors,
+            "reference_data",
+            "",
+            "base.access_status",
+            "多维表访问状态必须为 ready",
+        )
+    design_codes = base.get("design_codes")
+    if not isinstance(design_codes, list):
+        design_codes = []
+    record_counts = base.get("record_counts")
+    if not isinstance(record_counts, dict):
+        record_counts = {}
+    if status == "matched" and len(design_codes) != 1:
+        add_error(
+            errors,
+            "reference_data",
+            "",
+            "base.design_codes",
+            "已匹配商品必须且只能对应一个设计编码",
+        )
+    if status == "not_found" and any(
+        int(record_counts.get(key, 0) or 0) > 0
+        for key in ("style_external", "sku_external")
+    ):
+        add_error(
+            errors,
+            "reference_data",
+            "",
+            "base.record_counts",
+            "not_found 状态下款表和码表记录数必须为零",
+        )
+
+    attachments = data.get("attachments")
+    if not isinstance(attachments, list):
+        attachments = []
+        add_error(
+            errors,
+            "reference_data",
+            "",
+            "attachments",
+            "附件清单必须为列表",
+        )
+    downloaded_count = 0
+    report_count = 0
+    for index, attachment in enumerate(attachments, start=1):
+        if not isinstance(attachment, dict):
+            add_error(
+                errors,
+                "reference_data",
+                "",
+                f"attachments[{index}]",
+                "附件记录必须为对象",
+            )
+            continue
+        if attachment.get("role") == "test_reports":
+            report_count += 1
+        local_path = str(attachment.get("local_path") or "").strip()
+        if not local_path or not Path(local_path).is_file():
+            add_error(
+                errors,
+                "reference_data",
+                "",
+                f"attachments[{index}].local_path",
+                "多维表附件必须下载到当前任务工作目录",
+            )
+        else:
+            downloaded_count += 1
+
+    fallback_required = data.get("nas_fallback_required")
+    resolution = data.get("nas_resolution")
+    if not isinstance(fallback_required, dict):
+        fallback_required = {}
+    if not isinstance(resolution, dict):
+        resolution = {}
+    for source in ("product_information", "logo_reference", "test_reports"):
+        required = fallback_required.get(source)
+        item = resolution.get(source)
+        if not isinstance(required, bool) or not isinstance(item, dict):
+            add_error(
+                errors,
+                "reference_data",
+                "",
+                f"nas_resolution.{source}",
+                "缺少完整的 NAS 回退状态",
+            )
+            continue
+        if item.get("required") is not required:
+            add_error(
+                errors,
+                "reference_data",
+                "",
+                f"nas_resolution.{source}.required",
+                "NAS 回退 required 必须与缺失判断一致",
+            )
+        resolution_status = str(item.get("status", ""))
+        if required:
+            if resolution_status not in {"matched", "not_found", "unavailable"}:
+                add_error(
+                    errors,
+                    "reference_data",
+                    "",
+                    f"nas_resolution.{source}.status",
+                    "必需 NAS 来源必须完成 matched、not_found 或 unavailable 状态",
+                )
+            if resolution_status == "matched" and not item.get("matched_paths"):
+                add_error(
+                    errors,
+                    "reference_data",
+                    "",
+                    f"nas_resolution.{source}.matched_paths",
+                    "NAS 匹配成功时必须记录完整路径",
+                )
+            if resolution_status in {"not_found", "unavailable"} and not str(
+                item.get("notes", "")
+            ).strip():
+                add_error(
+                    errors,
+                    "reference_data",
+                    "",
+                    f"nas_resolution.{source}.notes",
+                    "NAS 未找到或不可用时必须记录检索范围或失败原因",
+                )
+        elif resolution_status != "not_required":
+            add_error(
+                errors,
+                "reference_data",
+                "",
+                f"nas_resolution.{source}.status",
+                "无需 NAS 回退时状态必须为 not_required",
+            )
+
+    if fallback_required.get("logo_reference") is not True:
+        add_error(
+            errors,
+            "reference_data",
+            "",
+            "nas_fallback_required.logo_reference",
+            "Logo 参考素材必须访问静物拍摄 NAS",
+        )
+    if fallback_required.get("test_reports") is False and report_count == 0:
+        add_error(
+            errors,
+            "reference_data",
+            "",
+            "nas_fallback_required.test_reports",
+            "没有多维表检测报告附件时必须启用检测报告 NAS 回退",
+        )
+
+    stats = {
+        "status": status,
+        "product_code": data.get("product_code"),
+        "design_codes": design_codes,
+        "record_counts": record_counts,
+        "attachments": len(attachments),
+        "attachments_downloaded": downloaded_count,
+        "nas_fallback_required": fallback_required,
+    }
+    return stats, errors
 
 
 def validate_ocr_reviews(
@@ -974,10 +1210,12 @@ def validate_prohibited_term_audit(
 
 def validate_audit_completion(
     inventory_path: Path,
+    reference_data_path: Path,
     ocr_results_path: Path,
     prohibited_term_audit_path: Path,
     ocr_config_path: Path,
     prohibited_config_path: Path,
+    reference_config_path: Path,
     visual_config: dict[str, Any],
     ocr_config: dict[str, Any],
     completion_config: dict[str, Any],
@@ -986,10 +1224,12 @@ def validate_audit_completion(
 
     参数：
         inventory_path: 已填写审核结果的 CSV 台账路径。
+        reference_data_path: 已完成 NAS 状态填写的多维表商品资料 JSON 路径。
         ocr_results_path: 全包 OCR 结构化结果路径。
         prohibited_term_audit_path: 已人工复核的驳回词候选 JSON 路径。
         ocr_config_path: 本次审核使用的 OCR 配置路径。
         prohibited_config_path: 本次审核使用的平台驳回词配置路径。
+        reference_config_path: 本次审核使用的商品资料来源配置路径。
         visual_config: 已验证的视觉复核配置。
         ocr_config: 已验证的 OCR 审核配置。
         completion_config: 已验证的完整审核校验配置。
@@ -999,8 +1239,15 @@ def validate_audit_completion(
     """
 
     rows = load_inventory(inventory_path)
+    reference_stats, reference_errors = validate_reference_data(
+        reference_data_path,
+        reference_config_path,
+    )
     visual_summary = validate_visual_review(inventory_path, visual_config)
-    errors = [{"source": "visual", **item} for item in visual_summary.get("errors", [])]
+    errors = [*reference_errors]
+    errors.extend(
+        {"source": "visual", **item} for item in visual_summary.get("errors", [])
+    )
     ocr_stats, ocr_errors = validate_ocr_reviews(
         rows,
         ocr_results_path,
@@ -1026,11 +1273,13 @@ def validate_audit_completion(
     return {
         "schema_version": 1,
         "inventory": str(inventory_path.resolve()),
+        "reference_data": str(reference_data_path.resolve()),
         "ocr_results": str(ocr_results_path.resolve()),
         "prohibited_term_audit": str(prohibited_term_audit_path.resolve()),
         "valid": not errors,
         "error_count": len(errors),
         "stats": {
+            "reference_data": reference_stats,
             "visual": visual_summary.get("stats", {}),
             "ocr": ocr_stats,
             "material": material_stats,
@@ -1048,11 +1297,17 @@ def parse_args() -> argparse.Namespace:
         无。
 
     返回值：
-        包含台账、驳回词结果、配置和汇总输出的参数对象。
+        包含台账、商品资料、驳回词结果、配置和汇总输出的参数对象。
     """
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("inventory", type=Path, help="已填写审核结果的 CSV 台账")
+    parser.add_argument(
+        "--reference-data",
+        type=Path,
+        required=True,
+        help="已完成 NAS 状态填写的多维表商品资料 JSON",
+    )
     parser.add_argument(
         "--ocr-results",
         type=Path,
@@ -1090,6 +1345,12 @@ def parse_args() -> argparse.Namespace:
         help="完整审核校验配置",
     )
     parser.add_argument(
+        "--reference-config",
+        type=Path,
+        default=DEFAULT_REFERENCE_CONFIG,
+        help="商品资料来源配置",
+    )
+    parser.add_argument(
         "--summary-output", type=Path, required=True, help="校验汇总 JSON"
     )
     parser.add_argument(
@@ -1118,6 +1379,7 @@ def main() -> int:
             work_dir=DEFAULT_WORK_DIR,
             protected_paths=[
                 args.inventory.parent,
+                args.reference_data.parent,
                 args.ocr_results.parent,
                 args.prohibited_term_audit.parent,
                 args.summary_output.parent,
@@ -1129,10 +1391,12 @@ def main() -> int:
         completion_config = load_completion_config(args.completion_config)
         summary = validate_audit_completion(
             inventory_path=args.inventory,
+            reference_data_path=args.reference_data,
             ocr_results_path=args.ocr_results,
             prohibited_term_audit_path=args.prohibited_term_audit,
             ocr_config_path=args.ocr_config,
             prohibited_config_path=args.prohibited_config,
+            reference_config_path=args.reference_config,
             visual_config=visual_config,
             ocr_config=ocr_config,
             completion_config=completion_config,
@@ -1150,6 +1414,7 @@ def main() -> int:
             work_dir=DEFAULT_WORK_DIR,
             protected_paths=[
                 args.inventory.parent,
+                args.reference_data.parent,
                 args.ocr_results.parent,
                 args.prohibited_term_audit.parent,
                 args.summary_output.parent,

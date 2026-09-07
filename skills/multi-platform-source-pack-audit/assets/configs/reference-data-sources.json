@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "identity": "user",
+  "base_token": "VNmEb3EAVa9ndGsjbUJco0WMnsf",
+  "missing_markers": [
+    "",
+    "/"
+  ],
+  "tables": {
+    "style_external": {
+      "table_id": "tblMh5DYC5B6UmBq",
+      "name": "产品资料-款-对外",
+      "lookup_field": "货号（KQ码）",
+      "lookup_operator": "intersects",
+      "fields": {
+        "design_code": "设计编码",
+        "product_code": "货号（KQ码）",
+        "product_name": "品名",
+        "wash_label_names": "洗唛图片",
+        "product_image_names": "图片1",
+        "supplementary_image_names": "图片2",
+        "report_names": "质检报告（次表 款）",
+        "certificate_names": "合格证图片-款"
+      },
+      "required_roles": [
+        "design_code",
+        "product_code",
+        "product_name"
+      ]
+    },
+    "sku_external": {
+      "table_id": "tbl64Tp9r9QTurml",
+      "name": "产品资料-码-对外",
+      "lookup_field": "货号（KQ码）",
+      "lookup_operator": "intersects",
+      "fields": {
+        "unique_product_code": "产品编码-唯一码",
+        "design_code": "设计编码",
+        "product_code": "货号（KQ码）",
+        "product_name": "品名",
+        "color_specification": "颜色规格",
+        "size": "尺寸（例子110/52）",
+        "execution_standard": "执行标准-款",
+        "safety_category": "安全类别-款",
+        "composition": "成分",
+        "primary_category": "一级分类",
+        "secondary_category": "二级分类",
+        "product_image_names": "图片",
+        "supplementary_image_names": "图片27ss"
+      },
+      "required_roles": [
+        "unique_product_code",
+        "design_code",
+        "product_code",
+        "product_name",
+        "color_specification",
+        "size",
+        "execution_standard",
+        "safety_category",
+        "composition",
+        "primary_category",
+        "secondary_category"
+      ]
+    },
+    "style_source": {
+      "table_id": "tbl0VD4BP12qHbB6",
+      "name": "产品中心信息表spu维度-款",
+      "lookup_field": "设计编码",
+      "lookup_operator": "==",
+      "fields": {
+        "design_code": "设计编码",
+        "product_name": "品名",
+        "product_images": "图片",
+        "supplementary_images": "图片27ss",
+        "wash_labels": "洗唛图片-款",
+        "certificates": "合格证图片-款-果泥",
+        "test_reports": "质检报告（百合 乌冬）"
+      },
+      "attachment_roles": [
+        "product_images",
+        "supplementary_images",
+        "wash_labels",
+        "certificates",
+        "test_reports"
+      ]
+    }
+  },
+  "nas": {
+    "product_information": {
+      "mode": "missing_only",
+      "path": "\\\\192.168.110.20\\浙江酷趣\\产品中心\\产品信息"
+    },
+    "logo_reference": {
+      "mode": "always",
+      "path": "\\\\192.168.110.20\\视觉部-同步\\2-静物图\\静物拍摄2026"
+    },
+    "test_reports": {
+      "mode": "missing_only",
+      "path": "\\\\192.168.110.20\\浙江酷趣\\产品中心\\检测报告"
+    }
+  }
+}
