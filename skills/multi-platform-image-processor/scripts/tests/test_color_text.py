@@ -89,6 +89,22 @@ class ColorTextTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "同字号"):
                 replace_color_glyphs(source, root / "output.png", [item], root)
 
+    def test_reference_frame_excludes_adjacent_character_stroke(self):
+        """验证同步调整两处字框后排除邻字残笔，字形位置保持不变。"""
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            source, item = self.fixture(root)
+            with Image.open(source) as opened:
+                image = opened.copy()
+            image.putpixel((69, 25), (0, 0, 0))
+            image.save(source)
+            item["原字区域"] = [18, 20, 38, 40]
+            item["参考字区域"] = [48, 20, 68, 40]
+            output = replace_color_glyphs(source, root / "output.png", [item], root)
+            with Image.open(output) as changed:
+                self.assertEqual(changed.getpixel((39, 25)), (255, 255, 255))
+                self.assertEqual(changed.getpixel((25, 25)), (0, 0, 0))
+
     def test_empty_plan_keeps_shared_overrides(self):
         """验证没有命中词时只透传现有材质修正映射。"""
         original = {Path("source"): Path("material")}
