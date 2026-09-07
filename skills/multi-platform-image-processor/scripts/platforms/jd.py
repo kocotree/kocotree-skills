@@ -36,7 +36,8 @@ def derive(
     """
     platform_dir = ensure_dir(platform_dir)
     _build_main_images(source_root, platform_dir, report)
-    ensure_dir(platform_dir / "800sku")
+    ensure_dir(platform_dir / "1080sku")
+    ensure_dir(platform_dir / "1440sku")
     transparent_dir = ensure_dir(platform_dir / "透明图")
     transparent_base = resolve_source_path(source_root, "透明图")
     for source in get_image_group(source_root, "透明图", recursive=True):

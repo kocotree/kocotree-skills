@@ -82,8 +82,8 @@ def run_platform_processing(
         template：平台模板路径。
         output_arg：输出根目录。
         report：完整产品处理报告。
-        product_code：Excel 确认的产品货号，用于构造京东目录名。
-        product_name：Excel 确认的产品名称，用于构造京东目录名。
+        product_code：产品资料确认的产品货号，用于构造京东目录名。
+        product_name：产品资料确认的产品名称，用于构造京东目录名。
         detail_plan：Agent 视觉检查生成的详情模块计划路径。
         detail_overrides：原始详情图到临时面料修正版的映射。
         color_name_plan：白底图、透明图相对路径到 SKU 颜色名称的视觉映射。

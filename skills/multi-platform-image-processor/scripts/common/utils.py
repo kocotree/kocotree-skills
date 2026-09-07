@@ -36,8 +36,8 @@ def build_platform_directory_names(product_code: str, product_name: str) -> dict
     """构造当前产品的六平台输出目录名。
 
     参数：
-        product_code：Excel 确认的产品货号。
-        product_name：Excel 确认的产品名称。
+        product_code：产品资料确认的产品货号。
+        product_name：产品资料确认的产品名称。
     返回值：
         包含六个平台键与实际输出目录名的字典。
     """
@@ -46,7 +46,7 @@ def build_platform_directory_names(product_code: str, product_name: str) -> dict
     code = " ".join(code.split())
     name = " ".join(name.split())
     if not code or not name:
-        raise RuntimeError("生成京东目录名需要 Excel 中的产品货号和产品名称")
+        raise RuntimeError("生成京东目录名需要 产品资料中的产品货号和产品名称")
     directory_names = dict(平台目录名)
     directory_names["jd"] = f"{code} {name}-京东"
     return directory_names
@@ -133,7 +133,7 @@ def new_report(source: Path, template: Path | None, output: Path) -> dict[str, A
         },
         "产品匹配": {},
         "路径": {"源路径": str(source), "最终输出": str(output)},
-        "面料检查": {"Excel中文原文": "", "检查项": []},
+        "面料检查": {"中文原文": "", "检查项": []},
         "BarTender导出": {},
         "业务图片": {},
         "平台结果": {},

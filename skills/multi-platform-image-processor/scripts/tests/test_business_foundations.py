@@ -29,6 +29,7 @@ from common.settings import resolve_business_paths
 from common.scan_source_pack import get_sku800_recursive
 from common.utils import build_platform_directory_names, new_report, 平台模板目录名
 from platforms.jd import _build_main_images as build_jd_main_images
+from platforms.jd import derive as derive_jd
 from platforms.tmall import _build_main_images as build_tmall_main_images
 
 
@@ -92,6 +93,25 @@ class BusinessSettingsTests(unittest.TestCase):
         self.assertTrue((jd_template / "1080主图").is_dir())
         self.assertFalse((jd_template / "800主图").exists())
         self.assertFalse((jd_template / "750主图").exists())
+        self.assertTrue((jd_template / "1080sku").is_dir())
+        self.assertTrue((jd_template / "1440sku").is_dir())
+        self.assertFalse((jd_template / "800sku").exists())
+        self.assertFalse((jd_template / "750sku").exists())
+
+    def test_jd_creates_only_empty_high_resolution_sku_directories(self) -> None:
+        """验证京东代码独立生成两个空 SKU 目录，不依赖模板。"""
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            output = root / "京东"
+            with patch("platforms.jd._build_main_images"), patch(
+                "platforms.jd.get_image_group", return_value=[],
+            ), patch("platforms.jd.scale_detail_pages"):
+                derive_jd(root / "输入", root / "天猫", output, {}, {})
+            for name in ("1080sku", "1440sku"):
+                self.assertTrue((output / name).is_dir())
+                self.assertEqual(list((output / name).iterdir()), [])
+            for name in ("800sku", "750sku"):
+                self.assertFalse((output / name).exists())
 
     def test_tmall_template_contains_high_resolution_main_images(self) -> None:
         """验证天猫模板包含两组高清主图目录。"""

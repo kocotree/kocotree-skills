@@ -1,6 +1,6 @@
 ---
 name: multi-platform-image-processor
-description: 全自动处理单个商品图片数据包，依据产品信息 Excel 检查并修正详情页中文面料，生成天猫、京东、CBME、唯品会、蜂享家＋爱库存、站外通用版图片，以及合格证图、吊牌图和尺码图，并完成内部质检。
+description: 全自动处理单个商品图片数据包，优先读取飞书多维表产品资料、由 NAS Excel 补缺，检查并修正详情页中文面料，生成六平台图片以及合格证图、吊牌图和尺码图，并完成内部质检。
 metadata:
   version: "2.2.2"
 ---
@@ -12,6 +12,8 @@ metadata:
 业务用户提供产品目录或其中的数据包路径。产品目录可以直接包含素材目录，也可以在下层使用“数据包”目录。目录名能够唯一识别产品货号时直接使用；否则补充产品货号。产品名称用于同货号候选复核。
 
 ## 环境准备
+
+安装 `lark-cli` 并完成用户身份授权，能够读取配置中的两张多维表；合格证源文件通过 NAS 访问。
 
 在 `scripts/` 目录执行：
 
@@ -36,9 +38,9 @@ Agent 在执行前生成内部视觉上下文，业务用户无需提供视觉�
 
 ## 固定流程
 
-1. 识别产品身份并解析 NAS 业务路径。
-2. 选择一份产品信息记录并匹配 BarTender 文件。
-3. 依据 Excel 中文面料检查和修正详情页。
+1. 识别产品货号，按码表、款表、NAS Excel 的优先级补齐产品资料。
+2. 固定合并资料及字段来源，匹配 NAS BarTender 文件。
+3. 依据选定资料的完整中文面料检查和修正详情页。
 4. 检查详情页模块，排序并拆分连体图。
 5. 生成六平台图片。
 6. 生成合格证图、吊牌图和尺码图。
@@ -51,14 +53,14 @@ Agent 在执行前生成内部视觉上下文，业务用户无需提供视觉�
 
 - 输入目录树：[input_structure.md](references/input_structure.md)
 - 六平台转换规则：[platform_rules.md](references/platform_rules.md)
-- NAS、Excel、面料、BarTender 和业务图片：[business_rules.md](references/business_rules.md)
+- 多维表、NAS 补缺、面料、BarTender 和业务图片：[business_rules.md](references/business_rules.md)
 - Agent 视觉定位与复核：[visual_review.md](references/visual_review.md)
 - 交付目录、内部报告和完成状态：[output_contract.md](references/output_contract.md)
 
 ## 完成要求
 
 - 产品信息来源和 BarTender 文件匹配完成。
-- 详情页面料与 Excel 中文原文一致。
+- 详情页面料与选定产品资料的中文原文一致。
 - 六平台目录与三张业务图片完整。
 - 图片尺寸、格式、透明通道、文件大小和命名符合规则。
 - Agent 完成详情模块、站外去字、透明图、面料、尺码表和业务图片复核。

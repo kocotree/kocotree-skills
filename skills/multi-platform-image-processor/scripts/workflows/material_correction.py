@@ -32,11 +32,11 @@ def apply_material_plan(
 ) -> dict[Path, Path] | None:
     """按视觉定位计划生成需要修正的详情图。
 
-    功能说明：只读检查源详情图，使用 Excel 中文原文右对齐重绘全部
+    功能说明：只读检查源详情图，使用资料中的中文原文右对齐重绘全部
     已定位面料区域，并返回原图到修正版的路径映射供平台详情页使用。
     参数：
         source_root：只读的产品目录或数据包目录。
-        expected：Excel 中文面料原文。
+        expected：资料中的中文面料原文。
         plan_path：Agent 生成的视觉定位计划。
         staging_root：仅存放面料修正版的任务临时目录。
         report：完整处理报告。
@@ -61,7 +61,7 @@ def apply_material_plan(
     if not items:
         report["面料检查"]["检查项"].append(
             {
-                "Excel原文": expected,
+                "中文原文": expected,
                 "已修改": False,
                 "检查结论": "详情页未发现需要重绘的面料字段",
             }
@@ -91,7 +91,7 @@ def apply_material_plan(
             ]
             result: dict[str, Any] = {
                 "图片": str(image),
-                "Excel原文": expected,
+                "中文原文": expected,
                 "识别原文": actual,
                 "区域": list(region),
             }

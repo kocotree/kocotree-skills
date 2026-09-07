@@ -7,12 +7,7 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 from common.nas_paths import require_accessible_directory, to_unc_path
-from common.product_info_reader import (
-    ProductInfoRecord,
-    extract_chinese_material,
-    extract_representative_color,
-    find_product_info,
-)
+from common.product_sources import resolve_product_data
 from common.product_matcher import infer_product_code
 from common.settings import resolve_business_paths
 from common.run_logging import (
@@ -29,7 +24,7 @@ from common.run_workspace import (
 from common.utils import add_report_item, new_report
 from common.write_report import write_report
 
-from .business_support import load_plan, product_match_to_dict
+from .business_support import load_plan
 from .certificate_assets import generate_business_images
 from .material_correction import apply_material_plan
 from .platform_processing import (
@@ -74,35 +69,19 @@ def run_full_workflow(args: Any) -> int:
         if not product_code:
             raise RuntimeError("无法从产品目录可靠识别货号，请提供 --product-code")
         business_paths = resolve_business_paths()
-        product_info_root = require_accessible_directory(
-            to_unc_path(business_paths.product_info_root),
-            "产品信息目录",
-        )
         certificate_root = require_accessible_directory(
             to_unc_path(business_paths.certificate_root),
             "BarTender 合格证目录",
         )
-        match = find_product_info(product_info_root, product_code, product_name)
-        report["产品匹配"] = product_match_to_dict(
-            match.selected if isinstance(match.selected, ProductInfoRecord) else None,
-            match.candidates,
-            match.reason,
+        record = resolve_product_data(
+            product_code, product_name, business_paths.product_info_root,
         )
-        if match.selected is None:
-            raise RuntimeError(match.reason)
-        record = match.selected
-        assert isinstance(record, ProductInfoRecord)
+        report["产品匹配"] = record.to_report()
         confirmed_product_code = str(record.get("产品货号", "")).strip() or product_code
         confirmed_product_name = str(record.get("产品名称", "")).strip() or product_name
-        if not confirmed_product_name:
-            raise RuntimeError("产品信息 Excel 缺少产品名称")
-        expected = extract_chinese_material(record.get("中文面料", ""))
-        if not expected:
-            raise RuntimeError("产品信息 Excel 缺少中文面料")
-        representative_color = extract_representative_color(record)
-        if not representative_color:
-            raise RuntimeError("产品信息 Excel 缺少可识别的代表颜色或规格")
-        report["面料检查"]["Excel中文原文"] = expected
+        expected = record.get("中文面料")
+        representative_color = record.get("颜色")
+        report["面料检查"]["中文原文"] = expected
         report["产品匹配"]["代表颜色"] = representative_color
         report["路径"]["源UNC路径"] = str(to_unc_path(source))
         plan_value = str(context.get("面料计划", "")).strip()

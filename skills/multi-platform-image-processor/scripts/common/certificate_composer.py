@@ -35,7 +35,7 @@ def format_certificate_fabric_text(fabric_text: str) -> str:
     功能说明：统一中英文括号；原文已包含带冒号的层级名称时直接保留，
     只有纯成分文本才补充“面料：”前缀。
     参数：
-        fabric_text：产品信息 Excel 中的中文面料原文。
+        fabric_text：产品资料 中的中文面料原文。
     返回值：
         适合绘制到合格证的信息文本。
     """

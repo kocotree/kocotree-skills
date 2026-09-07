@@ -4,8 +4,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from common.product_info_reader import ProductInfoRecord
-
 
 def parse_box(value: object, label: str) -> tuple[int, int, int, int]:
     """解析内部上下文中的四整数矩形。"""
@@ -43,33 +41,6 @@ def parse_point(value: object, label: str) -> tuple[int, int]:
     if any(number < 0 for number in numbers):
         raise RuntimeError(f"{label}不能是负数")
     return numbers
-
-
-def record_to_dict(record: ProductInfoRecord) -> dict[str, Any]:
-    """将产品信息记录转换为可写入 JSON 的对象。"""
-    return {
-        "文件": str(record.file),
-        "工作表": record.sheet,
-        "行号": record.row,
-        "字段": {key: str(value) for key, value in record.data.items()},
-    }
-
-
-def product_match_to_dict(
-    selected: ProductInfoRecord | None,
-    candidates: list[object],
-    reason: str,
-) -> dict[str, Any]:
-    """构造包含选中记录与全部候选的产品匹配报告。"""
-    return {
-        "匹配结论": reason,
-        "选中记录": record_to_dict(selected) if selected else {},
-        "候选记录": [
-            record_to_dict(candidate)
-            for candidate in candidates
-            if isinstance(candidate, ProductInfoRecord)
-        ],
-    }
 
 
 def load_plan(path: Path) -> dict[str, Any]:

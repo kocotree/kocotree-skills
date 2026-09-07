@@ -70,9 +70,8 @@ def validate_business_environment() -> dict[str, str]:
     status["BarTender"] = str(executable)
     paths = resolve_business_paths()
     try:
-        require_accessible_directory(to_unc_path(paths.product_info_root), "产品信息目录")
         require_accessible_directory(to_unc_path(paths.certificate_root), "BarTender 合格证目录")
-        status["NAS"] = "业务目录可访问"
+        status["NAS"] = "合格证目录可访问，产品信息目录按需读取"
     except RuntimeError as exc:
         status["NAS"] = str(exc)
         logger.warning("NAS 业务目录检查未通过：%s", exc)

@@ -33,11 +33,11 @@ def _resolve_certificate_fabric_settings(
     context: dict[str, Any],
     fabric_text: str,
 ) -> tuple[str, tuple[int, int] | None, int]:
-    """根据原合格证面料完整性决定是否补充 Excel 面料。
+    """根据原合格证面料完整性决定是否补充中文面料。
 
     参数：
         context：Agent 内部视觉定位结果。
-        fabric_text：产品信息 Excel 中的中文面料原文。
+        fabric_text：产品资料 中的中文面料原文。
     返回值：
         待新增的面料文字、可选面料锚点和字号；原合格证信息完整时文字为空。
     """
@@ -68,9 +68,9 @@ def generate_business_images(
 
     参数：
         context：Agent 内部视觉定位结果。
-        product_name：产品信息 Excel 中的正式产品名称。
-        representative_color：产品信息 Excel 首个颜色或规格对应的代表颜色。
-        fabric_text：产品信息 Excel 中的中文面料原文。
+        product_name：产品资料 中的正式产品名称。
+        representative_color：产品资料 首个颜色或规格对应的代表颜色。
+        fabric_text：产品资料 中的中文面料原文。
         product_root：业务图片输出产品目录。
         content_root：详情图相对路径解析根目录。
         certificate_root：BarTender 文件目录。
@@ -156,7 +156,7 @@ def generate_business_images(
                 "面料处理": (
                     "保留原合格证面料"
                     if original_material_complete
-                    else "补充Excel中文面料"
+                    else "补充中文面料"
                 ),
                 "经销商地址图片": str(dealer_address_image),
             }

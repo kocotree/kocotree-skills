@@ -65,8 +65,8 @@ def select_bartender_file(
 
     参数：
         root：合格证文件根目录。
-        product_name：产品信息 Excel 中的正式产品名称。
-        color：产品信息 Excel 中确定的代表颜色。
+        product_name：产品资料 中的正式产品名称。
+        color：产品资料 中确定的代表颜色。
         preferred_size：优先尺码。
     返回值：
         选中文件、产品候选和选择说明。
@@ -79,7 +79,7 @@ def select_bartender_file(
     )
     name_key = normalize_identity(product_name)
     if not name_key:
-        return MatchResult(None, [], "产品信息 Excel 缺少正式产品名称")
+        return MatchResult(None, [], "产品资料 缺少正式产品名称")
     product_directories = sorted(
         (
             path for path in root.iterdir()
@@ -105,7 +105,7 @@ def select_bartender_file(
         return MatchResult(None, [], f"产品合格证目录中没有顶层 BarTender 文件：{product_directory}")
     color_key = normalize_identity(color)
     if not color_key:
-        return MatchResult(None, candidates, "产品信息 Excel 缺少可识别的代表颜色")
+        return MatchResult(None, candidates, "产品资料 缺少可识别的代表颜色")
     colored = [path for path in candidates if color_key in normalize_identity(path.stem)]
     if not colored:
         return MatchResult(None, candidates, f"没有找到代表颜色 {color} 的 BarTender 文件")

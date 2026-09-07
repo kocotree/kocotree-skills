@@ -55,7 +55,7 @@ def normalize_material_text(text: str) -> str:
     """规范详情页面料文字的标签层级和括号。
 
     参数：
-        text：产品信息 Excel 中的中文面料原文。
+        text：产品资料 中的中文面料原文。
     返回值：
         可用于详情页重绘的面料文字。
     """
@@ -187,7 +187,7 @@ def measure_material_layout(
         source：包含原材质文字的详情图。
         region：允许重绘的材质文字区域。
         reference_regions：名称、货号、颜色或尺码等右侧文字区域。
-        text：准备写入的 Excel 中文面料原文。
+        text：准备写入的 资料中的中文面料原文。
         fonts：已校验字体角色映射。
         background：信息卡纯色背景。
         horizontal_padding：材质区域左侧保留距离。
@@ -330,7 +330,7 @@ def draw_mixed_text(
     参数：
         image：需要绘制的 RGB 图片。
         position：文字左上参考点。
-        text：Excel 中文面料原文。
+        text：资料中的中文面料原文。
         fonts：已校验字体角色映射。
         style：字号、颜色和行距。
     返回值：
@@ -372,7 +372,7 @@ def replace_material_text(
         source：源详情图。
         output：修改图路径。
         region：允许修改的文字区域。
-        text：Excel 中文面料原文。
+        text：资料中的中文面料原文。
         fonts：已校验的字体角色映射。
         style：版式参数。
         background：目标区域的纯色或干净背景块。

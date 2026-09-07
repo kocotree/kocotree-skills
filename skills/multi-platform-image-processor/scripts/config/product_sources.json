@@ -1,0 +1,24 @@
+{
+  "base_token": "VNmEb3EAVa9ndGsjbUJco0WMnsf",
+  "tables": [
+    {
+      "name": "产品资料-码-对外",
+      "table_id": "tbl64Tp9r9QTurml",
+      "fields": {
+        "产品货号": "货号（KQ码）",
+        "产品名称": "品名",
+        "中文面料": "成分",
+        "规格": "颜色规格",
+        "尺码": "尺寸（例子110/52）"
+      }
+    },
+    {
+      "name": "产品资料-款-对外",
+      "table_id": "tblMh5DYC5B6UmBq",
+      "fields": {
+        "产品货号": "货号（KQ码）",
+        "产品名称": "品名"
+      }
+    }
+  ]
+}

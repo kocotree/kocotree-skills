@@ -4,7 +4,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterable, Iterator, Mapping
 
 from openpyxl import load_workbook
 import xlrd
@@ -45,7 +45,7 @@ def extract_chinese_material(value: object) -> str:
     参数：
         value：产品信息单元格原始值。
     返回值：
-        英文面料段之前的中文行，保持中文内容和换行顺序。
+        全部中文组成行，保持原文、化学符号和换行顺序。
     """
     chinese_lines: list[str] = []
     for raw_line in str(value or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
@@ -53,13 +53,20 @@ def extract_chinese_material(value: object) -> str:
         if not line:
             continue
         has_chinese = bool(re.search(r"[\u4e00-\u9fff]", line))
-        if re.search(r"[A-Za-z]", line) and not has_chinese:
-            break
-        chinese_lines.append(line)
+        if has_chinese:
+            # 同行英文译文从明确的英文层级标题开始，化学符号保持原样。
+            line = re.split(
+                r"(?i)(?<![A-Za-z])(?:fabric|lining|ingredients?|filler|filling|material|component)"
+                r"\s*(?:\d+\s*(?:/\s*(?:ingredients?|fabric)\s*\d+\s*)?)?[:：]",
+                line,
+                maxsplit=1,
+            )[0].rstrip()
+            if line:
+                chinese_lines.append(line)
     return "\n".join(chinese_lines).strip()
 
 
-def extract_representative_color(record: ProductInfoRecord) -> str:
+def extract_representative_color(record: ProductInfoRecord | Mapping[str, Any]) -> str:
     """从产品信息记录中读取代表颜色。
 
     参数：
@@ -70,9 +77,10 @@ def extract_representative_color(record: ProductInfoRecord) -> str:
     explicit_color = str(record.get("颜色", "")).strip()
     if explicit_color:
         return explicit_color
-    specification = str(record.get("规格", "")).strip().splitlines()[0]
+    specification = str(record.get("规格", "")).strip()
     if not specification:
         return ""
+    specification = specification.splitlines()[0]
     color = re.sub(r"\s*\d{2,3}(?:\s*[/／-]\s*\d{2,3})?\s*$", "", specification)
     return color.strip()
 

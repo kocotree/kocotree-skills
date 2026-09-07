@@ -13,8 +13,7 @@ from PIL import Image, ImageDraw
 import main as main_module
 from common.delivery_quality_audit import audit_business_images
 from common.material_editor import verify_non_target_unchanged
-from common.product_info_reader import ProductInfoRecord
-from common.product_matcher import MatchResult
+from common.product_sources import ProductData
 from common.run_workspace import RunWorkspace, prune_internal_runs, publish_delivery
 from common.utils import new_report
 from common.write_report import write_report
@@ -358,15 +357,13 @@ class FullWorkflowTests(unittest.TestCase):
             workspace.candidates_dir.mkdir()
             staging_product = workspace.staging_root / "产品_20260818-141603"
             staging_product.mkdir()
-            record = ProductInfoRecord(
-                root / "KQ26143.xlsx",
-                "产品资料",
-                2,
+            record = ProductData(
                 {
                     "产品货号": "KQ26143",
                     "产品名称": "儿童长裤",
                     "中文面料": "棉95%氨纶5%",
                     "规格": "蓝色110",
+                    "颜色": "蓝色",
                 },
             )
             args = SimpleNamespace(
@@ -385,8 +382,8 @@ class FullWorkflowTests(unittest.TestCase):
                 "workflows.full_package.require_accessible_directory",
                 side_effect=[root, root],
             ), patch(
-                "workflows.full_package.find_product_info",
-                return_value=MatchResult(record, [record], "唯一"),
+                "workflows.full_package.resolve_product_data",
+                return_value=record,
             ), patch(
                 "workflows.full_package.apply_material_plan",
                 return_value={},
@@ -422,6 +419,8 @@ class FullWorkflowTests(unittest.TestCase):
             data = json.loads(workspace.report_path.read_text(encoding="utf-8"))
             self.assertEqual(data["工作流"]["完成状态"], "完成")
             self.assertEqual(data["路径"]["最终输出"], str(delivery))
+            self.assertEqual(data["面料检查"]["中文原文"], "棉95%氨纶5%")
+            self.assertEqual(business.call_args.kwargs["certificate_root"], root)
 
 
 if __name__ == "__main__":
