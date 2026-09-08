@@ -186,3 +186,35 @@ class ColorTextTests(unittest.TestCase):
                 self.assertGreater(min(image.getpixel((174, 174))), 220)
             self.assertEqual(shared.read_bytes(), before)
             self.assertFalse(report["失败项"])
+
+    def test_pre_kv_sources_remain_independent_without_color_edits(self):
+        """验证一至三张前置图各自独立，超1600px源图保持一张，KV后继续合并。"""
+        for count in (1, 2, 3):
+            with self.subTest(count=count), TemporaryDirectory() as temp:
+                root = Path(temp)
+                detail = root / "详情"
+                detail.mkdir()
+                modules = []
+                for index in range(count + 2):
+                    source = detail / f"{index:02d}.png"
+                    height = 1700 if index == 0 else 100
+                    Image.new("RGB", (790, height), (index * 40, 20, 30)).save(source)
+                    modules.append({"图片": f"详情/{source.name}",
+                                    "类型": "品牌背书" if index < count else "KV" if index == count else "卖点"})
+                plan = root / "plan.json"
+                plan.write_text(json.dumps({"详情模块": modules}), encoding="utf-8")
+                shared = root / "天猫/790详情页/601.jpg"
+                shared.parent.mkdir(parents=True)
+                Image.new("RGB", (790, 200), "white").save(shared)
+                original = shared.read_bytes()
+                report = new_report(root, None, root / "output")
+                output = derive(root, root / "天猫", root / "output", report, {}, detail_plan=plan)
+                files = sorted((output / "790详情页").glob("*.jpg"))
+                self.assertEqual([file.name for file in files], [f"详情图-{i:02d}.jpg" for i in range(1, count + 2)])
+                heights = []
+                for file in files:
+                    with Image.open(file) as image:
+                        heights.append(image.height)
+                self.assertEqual(heights, [1700] + [100] * (count - 1) + [200])
+                self.assertEqual(shared.read_bytes(), original)
+                self.assertFalse(report["失败项"])

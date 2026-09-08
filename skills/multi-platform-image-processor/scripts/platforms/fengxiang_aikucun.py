@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -20,6 +21,7 @@ from common.scan_source_pack import (
 
 
 平台 = "蜂享家＋爱库存"
+logger = logging.getLogger(__name__)
 
 
 def derive(
@@ -62,16 +64,33 @@ def derive(
         overrides = prepare_color_overrides(source_root, color_text_plan or [], staging / "颜色", detail_overrides)
         _copy_sku800_tree(source_root, platform_dir / "800sku", report, overrides)
         detail_sources = list_images(tmall_dir / "790详情页")
-        if color_text_plan:
-            if detail_plan is None:
-                raise ValueError("颜色改字需要共享详情计划，以保持目标平台的详情顺序")
+        independent_count = 0
+        if color_text_plan and detail_plan is None:
+            raise ValueError("颜色改字需要共享详情计划，以保持目标平台的详情顺序")
+        if detail_plan is not None:
             ordered = prepare_ordered_detail_sources(source_root, detail_plan, staging / "模块", report, overrides)
-            detail_sources = generate_sequential_detail_pages(
-                ordered, staging / "详情", 790, 1600, 500 * 1024, report, 平台, "颜色修改临时详情",
+            sequence = report["详情页模块"]["模块顺序"]
+            kv_index = next((i for i, item in enumerate(sequence) if item["类型"] == "KV"), 0)
+            # KV前整张源图按首次出现顺序保留，分段计划中的同一源图合为一张。
+            following_sources = {item["源图"] for item in sequence[kv_index:]}
+            prefix = []
+            seen = set()
+            for i, item in enumerate(sequence[:kv_index]):
+                source = Path(item["源图"]).resolve()
+                if item["源图"] in following_sources:
+                    prefix.append(ordered[i])
+                elif source not in seen:
+                    prefix.append(overrides.get(source, source))
+                    seen.add(source)
+            independent_count = len(prefix)
+            logger.info("蜂享家详情前置图独立输出 count=%d KV_index=%d", independent_count, kv_index)
+            detail_sources = prefix + generate_sequential_detail_pages(
+                ordered[kv_index:], staging / "详情", 790, 1600, 500 * 1024, report, 平台, "平台临时详情",
             )
         detail_outputs = merge_long_detail_slices(
             detail_sources, platform_dir / "790详情页", 790, 4800, 20,
             1024 * 1024, report, 平台, "790详情页",
+            independent_prefix_count=independent_count,
         )
     if detail_outputs:
         add_review_suggestion(

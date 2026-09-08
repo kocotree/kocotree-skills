@@ -316,20 +316,45 @@ def merge_long_detail_slices(
     report: dict,
     platform: str,
     usage: str,
+    independent_prefix_count: int = 0,
 ) -> list[Path]:
+    """缩放并合并详情页，支持前置图片独立输出。
+
+    参数：
+        sources：按展示顺序排列的图片路径。
+        output_dir：输出目录。
+        width：输出宽度。
+        max_height：单张高度上限。
+        max_count：输出张数提示上限。
+        max_bytes：单张文件大小上限。
+        report：记录处理结果的报告。
+        platform：所属平台。
+        usage：图片用途。
+        independent_prefix_count：开头逐张独立输出的图片数，默认全部参与合并。
+    返回值：
+        按连续编号排列的输出图片路径。
+    """
     ensure_dir(output_dir)
-    resized_images: list[Image.Image] = []
-    for source in sources:
+    resized_images: list[tuple[Image.Image, bool]] = []
+    for index, source in enumerate(sources):
         try:
             image = open_image(source)
             ratio = width / image.width
-            resized_images.append(image.resize((width, max(1, round(image.height * ratio))), Image.Resampling.LANCZOS))
+            resized_images.append((
+                image.resize((width, max(1, round(image.height * ratio))), Image.Resampling.LANCZOS),
+                index < independent_prefix_count,
+            ))
         except Exception as exc:
             add_failure(report, "读取长切片详情页来源失败", 源文件=str(source), 错误=str(exc))
     groups: list[list[Image.Image]] = []
     current: list[Image.Image] = []
     current_h = 0
-    for image in resized_images:
+    for image, independent in resized_images:
+        if independent:
+            groups.append([image])
+            if image.height > max_height:
+                add_warning(report, "KV前独立详情图超过高度上限，需要视觉确认处理方式", 高度=image.height, 限制=max_height)
+            continue
         if current and current_h + image.height > max_height:
             groups.append(current)
             current = []
