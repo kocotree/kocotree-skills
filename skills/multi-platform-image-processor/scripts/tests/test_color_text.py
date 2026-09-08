@@ -11,7 +11,7 @@ from PIL import Image, ImageChops, ImageDraw
 
 from common.color_text import _clean_glyph_mask, prepare_color_overrides, rename_color_file, replace_color_glyphs
 from common.utils import new_report
-from platforms.fengxiang_aikucun import _copy_sku800_tree, derive
+from platforms.fengxiang_aikucun import _batch_color_jpg, _batch_jpg, _copy_sku800_tree, derive
 
 
 class ColorTextTests(unittest.TestCase):
@@ -79,6 +79,31 @@ class ColorTextTests(unittest.TestCase):
             self.assertEqual(render.call_args.args[0], overrides[source.resolve()])
             self.assertEqual(render.call_args.args[1].name, "小鹿呦呦.jpg")
             self.assertTrue(source.is_file())
+
+    def test_main_image_filename_uses_color_rule(self):
+        """验证主图输出文件名替换颜色，数字编号和源文件保持原样。"""
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            sources = [root / "主图/800/麋鹿呦呦.png", root / "主图/800/1.jpg"]
+            report = new_report(root, None, root / "output")
+            with patch("platforms.fengxiang_aikucun.process_jpg_original_or_compress") as render:
+                _batch_jpg(sources, root / "output/800主图", "800主图", report)
+            self.assertEqual([call.args[1].name for call in render.call_args_list], ["小鹿呦呦.jpg", "1.jpg"])
+            self.assertEqual([call.args[0] for call in render.call_args_list], sources)
+
+    def test_white_image_filename_uses_color_rule_in_business_branch(self):
+        """验证白底图各分支应用颜色命名规则，目录名称及共享颜色映射保持原样。"""
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            base = root / "白底图"
+            source = base / "麋鹿款/麋鹿呦呦.png"
+            colors = {source.resolve(): "麋鹿呦呦"}
+            report = new_report(root, None, root / "output")
+            with patch("platforms.fengxiang_aikucun.process_jpg_original_or_compress") as render:
+                _batch_color_jpg([source], base, root / "output/800白底图", "800白底图", report, colors)
+            self.assertEqual(render.call_args.args[1], root / "output/800白底图/麋鹿款/小鹿呦呦.jpg")
+            self.assertEqual(render.call_args.args[0], source)
+            self.assertEqual(colors[source.resolve()], "麋鹿呦呦")
 
     def test_mismatched_reference_size_is_rejected(self):
         """验证参考字框大小不同不被自动缩放导致字号变化。"""

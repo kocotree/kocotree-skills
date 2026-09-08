@@ -86,7 +86,8 @@ def derive(
 def _batch_jpg(sources: list[Path], output_dir: Path, usage: str, report: dict) -> None:
     ensure_dir(output_dir)
     for source in sources:
-        process_jpg_original_or_compress(source, output_dir / f"{source.stem}.jpg", 500 * 1024, report, 平台, usage)
+        output = output_dir / rename_color_file(source.with_suffix(".jpg")).name
+        process_jpg_original_or_compress(source, output, 500 * 1024, report, 平台, usage)
 
 
 def _copy_sku800_tree(source_root: Path, output_dir: Path, report: dict,
@@ -132,7 +133,7 @@ def _batch_color_jpg(
     ensure_dir(output_dir)
     for source in sources:
         relative = color_output_relative_path(source, source_base, color_names, ".jpg")
-        output = output_dir / relative
+        output = output_dir / rename_color_file(relative)
         ensure_dir(output.parent)
         process_jpg_original_or_compress(
             source,
