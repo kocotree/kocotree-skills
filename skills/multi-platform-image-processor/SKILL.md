@@ -2,7 +2,7 @@
 name: multi-platform-image-processor
 description: 全自动处理单个商品图片数据包，优先读取飞书多维表产品资料、由 NAS Excel 补缺，检查并修正详情页中文面料，生成六平台图片以及合格证图、吊牌图和尺码图，并完成内部质检。
 metadata:
-  version: "2.2.2"
+  version: "2.2.3"
 ---
 
 # 多平台图片处理
