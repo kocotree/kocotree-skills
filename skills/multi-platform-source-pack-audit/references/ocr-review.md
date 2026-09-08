@@ -50,6 +50,14 @@ uv run python .\run_ocr.py "<原始数据包路径>" ".\work\<任务标识>\inve
 6. OCR 失败时人工判断 `text_presence_status`；含文字图片必须手工转录全文并完成六类适用专项。
 7. 完成复核后填写 `ocr_human_verified=true`。
 
+## OCR 与人工判断冲突
+
+- OCR 结果是文字发现候选，人工对原图的复核结果是最终文字状态和转录依据。
+- OCR 返回 `success`，但原图确认没有有效文字时，将 `text_presence_status` 填为 `absent`，文字专项填为 `not_applicable`，并在 `ocr_review_notes` 记录误识别内容和判断依据。
+- OCR 返回 `success`，但原图文字因低清、压缩、透视、特效或遮挡不可可靠辨认时，将 `text_presence_status` 填为 `unreadable`，适用专项填为 `needs_review` 或 `needs_evidence`，并记录位置、原因和复核方式。
+- OCR 返回 `no_text` 或 `failed`，但原图确认含有文字时，将 `text_presence_status` 填为 `present`，手工补全 `visible_text_transcript` 和适用审核范围，并记录 OCR 漏识或失败原因。
+- 人工复核、状态填写和冲突说明均已完成时，该图片属于已完成检查；待人工复核或待补证结论写入最终飞书报告。缺少人工复核、文字状态、必要转录或冲突说明时属于未完成检查。
+
 ## 完成条件
 
 - OCR 结果中的图片数量等于台账图片数量。
@@ -58,3 +66,4 @@ uv run python .\run_ocr.py "<原始数据包路径>" ".\work\<任务标识>\inve
 - 每张含文字图片均包含 `prohibited_terms` 和 `typo` 范围。
 - 材质、尺码、商品身份和执行标准候选范围均已完成对应专项状态。
 - OCR 规则配置、图片哈希和结构化结果与当前台账一致。
+- OCR 与人工判断不一致的图片均已填写最终文字状态、冲突说明和适用专项状态。

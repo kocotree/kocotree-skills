@@ -17,6 +17,7 @@ COUNT_FIELDS = {
     "found": "watch_character_found_count",
     "checked": "watch_character_checked_count",
     "abnormal": "watch_character_abnormal_count",
+    "needs_review": "watch_character_needs_review_count",
     "unreviewed": "watch_character_unreviewed_count",
 }
 
@@ -75,7 +76,14 @@ def validate_inventory(inventory: Path) -> dict[str, Any]:
     LOGGER.info("开始校验字体专项台账：%s", resolved_inventory)
     errors: list[str] = []
     totals: dict[str, dict[str, int]] = defaultdict(
-        lambda: {"images": 0, "found": 0, "checked": 0, "abnormal": 0, "unreviewed": 0}
+        lambda: {
+            "images": 0,
+            "found": 0,
+            "checked": 0,
+            "abnormal": 0,
+            "needs_review": 0,
+            "unreviewed": 0,
+        }
     )
 
     with resolved_inventory.open("r", newline="", encoding="utf-8-sig") as source:
@@ -86,6 +94,7 @@ def validate_inventory(inventory: Path) -> dict[str, Any]:
                 "typography_profile_id",
                 "typography_reference_status",
                 "typography_occurrence_locations",
+                "typography_review_notes",
                 *COUNT_FIELDS.values(),
             }
             - set(reader.fieldnames or [])
@@ -113,6 +122,12 @@ def validate_inventory(inventory: Path) -> dict[str, Any]:
                         f"{relative_path} 异常数量大于已检查数量："
                         f"异常={counts['abnormal']}，已检查={counts['checked']}"
                     )
+                if counts["abnormal"] + counts["needs_review"] > counts["checked"]:
+                    errors.append(
+                        f"{relative_path} 异常与待人工复核数量之和大于已检查数量："
+                        f"异常={counts['abnormal']}，待人工复核={counts['needs_review']}，"
+                        f"已检查={counts['checked']}"
+                    )
                 if counts["unreviewed"] != 0:
                     errors.append(f"{relative_path} 仍有 {counts['unreviewed']} 个关注字符未检查")
                 if row["typography_reference_status"].strip() != "checked":
@@ -121,23 +136,33 @@ def validate_inventory(inventory: Path) -> dict[str, Any]:
                     "typography_occurrence_locations"
                 ].strip():
                     errors.append(f"{relative_path} 存在字体异常但未填写出现位置")
+                if counts["needs_review"] > 0:
+                    if not row["typography_occurrence_locations"].strip():
+                        errors.append(
+                            f"{relative_path} 存在待人工复核字符但未填写出现位置"
+                        )
+                    if not row["typography_review_notes"].strip():
+                        errors.append(
+                            f"{relative_path} 存在待人工复核字符但未填写原因和复核方式"
+                        )
                 profile_totals = totals[profile_id]
                 profile_totals["images"] += 1
                 for name, value in counts.items():
                     profile_totals[name] += value
                 LOGGER.info(
-                    "完成字体专项行校验：%s；发现=%s；已检查=%s；异常=%s；未检查=%s",
+                    "完成字体专项行校验：%s；发现=%s；已检查=%s；异常=%s；待人工复核=%s；未检查=%s",
                     relative_path,
                     counts["found"],
                     counts["checked"],
                     counts["abnormal"],
+                    counts["needs_review"],
                     counts["unreviewed"],
                 )
             except ValueError as exc:
                 errors.append(str(exc))
 
     result = {
-        "schema_version": 1,
+        "schema_version": 2,
         "inventory": str(resolved_inventory),
         "valid": not errors,
         "errors": errors,

@@ -110,9 +110,11 @@ TYPOGRAPHY_REVIEW_FIELDS = [
     "watch_character_found_count",
     "watch_character_checked_count",
     "watch_character_abnormal_count",
+    "watch_character_needs_review_count",
     "watch_character_unreviewed_count",
     "typography_reference_status",
     "typography_occurrence_locations",
+    "typography_review_notes",
 ]
 CSV_FIELDS = [
     "relative_path",
@@ -509,6 +511,7 @@ def build_base_row(
         "watch_character_found_count": "",
         "watch_character_checked_count": "",
         "watch_character_abnormal_count": "",
+        "watch_character_needs_review_count": "",
         "watch_character_unreviewed_count": "",
         "typography_reference_status": (
             ("not_checked" if typography_resources_ready else "待补证")
@@ -516,6 +519,7 @@ def build_base_row(
             else "not_applicable"
         ),
         "typography_occurrence_locations": "",
+        "typography_review_notes": "",
         "edge_top_status": image_default,
         "edge_right_status": image_default,
         "edge_bottom_status": image_default,

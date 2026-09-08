@@ -2,7 +2,7 @@
 name: multi-platform-source-pack-audit
 description: 对视觉部交付的 KOCOTREE 服装及配饰原始数据包执行多平台处理前质检，优先读取飞书多维表商品资料，通过全包 OCR 和逐图人工复核检查输入包结构与命名、产品信息、服饰 Logo、检测报告、中文文案、单位、字体字形、色差、透明图、详情页、平台驳回词和广告合规，并生成带图片证据的飞书错误清单。用于原始数据包进入 multi-platform-image-processor 前的检查、复查、准入审核和人工处理定位。
 metadata:
-  version: "1.3.0"
+  version: "1.3.1"
 ---
 
 # 多平台原始数据包质检
@@ -93,7 +93,7 @@ uv run python .\build_inventory.py "<原始数据包路径>" --output ".\work\<�
 uv run python .\run_ocr.py "<原始数据包路径>" ".\work\<任务标识>\inventory.csv" --results-output ".\work\<任务标识>\ocr-results.json" --evidence-dir ".\work\<任务标识>\ocr-review"
 ```
 
-按 [references/ocr-review.md](references/ocr-review.md) 对照原图复核每张图片。修正 `visible_text_transcript`，填写 `ocr_human_verified=true`；OCR 原文与人工转录不同时，在 `ocr_review_notes` 记录修正内容。
+按 [references/ocr-review.md](references/ocr-review.md) 对照原图复核每张图片。修正 `visible_text_transcript`，填写 `ocr_human_verified=true`；OCR 原文与人工判断不同时，以原图复核结果填写文字状态和人工转录，并在 `ocr_review_notes` 记录冲突、判断依据和处理结果。已完成上述复核的冲突属于已处理项，可进入最终报告。
 
 检查汇总文件的 `typography_resources` 字段。状态为 `partial` 或 `unavailable` 时，将字体专项标记为“待补证”，保留错误路径和原因，并继续其他检查。审核任务中不创建、替换或修改 Skill 资源。
 
@@ -157,7 +157,7 @@ uv run python .\validate_audit_completion.py ".\work\<任务标识>\inventory.cs
 - 按商品适用平台和类目执行 [references/platform-prohibited-terms.md](references/platform-prohibited-terms.md)，逐张核对图片中的可见文字。
 - 按 [references/material-review.md](references/material-review.md) 判断每张图片是否包含材质文案，并将每处材质文案与当前款具体面料成分信息表逐项核对。
 - 按图片适用平台和类型执行 [references/platform-image-requirements.md](references/platform-image-requirements.md)，核对真实像素、文件大小、数量、编号、命名和版式备注。
-- 按 [references/typography-review.md](references/typography-review.md) 遍历全部详情页切片，逐个定位并比对数字 `1` 的字体和字重。
+- 按 [references/typography-review.md](references/typography-review.md) 遍历全部详情页切片，逐个定位并比对数字 `1` 的字体和字重。因低清、压缩、透视、特效或遮挡无法可靠定性的字符计入已检查和待人工复核，不计入未检查。
 - 按 [references/execution-checklist.md](references/execution-checklist.md) 完成全部专项。
 
 ### 4. 详情页联审
@@ -211,10 +211,10 @@ uv run python .\validate_audit_completion.py ".\work\<任务标识>\inventory.cs
 9. 平台驳回词命中项已全部写入飞书文档并附证据。
 10. 平台图片规格不符合项已全部写入飞书文档。
 11. 阿里妈妈方圆体 SemiBold 字体文件和标准字形参考图已成功读取。
-12. 详情页数字 `1` 的发现数量等于已检查数量，未检查数量为零；异常位置已全部写入台账和飞书文档。
+12. 详情页数字 `1` 的发现数量等于已检查数量，未检查数量为零；已确认异常和无法可靠定性的待人工复核位置已全部写入台账和飞书文档。
 13. 飞书文档已反向读取验证。
 14. 原始包目录与文件命名十项检查均已完成，所有不符合项已写入飞书文档。
 15. 平台驳回词扫描已覆盖全部可读文字，全部命中项均有处理状态、说明和适用证据。
 16. 材质文案存在性判断覆盖全部图片，全部材质文案均已关联具体面料成分依据或标记待补证。
-17. `audit-completion-summary.json` 的 `valid` 为 `true`；非零退出码时禁止创建最终飞书报告或宣称完成。
+17. `audit-completion-summary.json` 的 `valid` 为 `true`；已执行检查且结构化记录完整的待人工复核、待补证和 OCR 人工修正属于完成状态。只有真正漏检、必填记录缺失、输入失效或脚本执行失败时返回非零退出码，并禁止创建最终飞书报告或宣称完成。
 18. OCR 图片总数等于台账图片总数，逐图人工复核数等于 OCR 图片总数，六类候选范围均有对应专项状态。

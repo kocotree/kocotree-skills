@@ -568,6 +568,7 @@ def validate_ocr_reviews(
         "success": 0,
         "no_text": 0,
         "failed_with_manual_fallback": 0,
+        "human_overrides": 0,
         "low_confidence_blocks": 0,
         "review_scopes": 0,
     }
@@ -667,7 +668,10 @@ def validate_ocr_reviews(
                 f"包含未知 OCR 审核范围：{unknown_scopes}",
                 row_number,
             )
+        text_presence = row.get("text_presence_status", "").strip()
         missing_scopes = sorted(result_scopes - row_scopes)
+        if text_presence == "absent":
+            missing_scopes = []
         if missing_scopes:
             add_error(
                 errors,
@@ -690,6 +694,8 @@ def validate_ocr_reviews(
                     row_number,
                 )
         for scope in sorted(row_scopes & set(scope_status_fields)):
+            if text_presence == "absent":
+                continue
             field = scope_status_fields[scope]
             field_status = row.get(field, "").strip()
             if field_status not in scope_allowed_statuses[scope]:
@@ -724,15 +730,26 @@ def validate_ocr_reviews(
                     "台账 OCR 原文与结构化结果不一致",
                     row_number,
                 )
-            if row.get("text_presence_status", "").strip() != "present":
+            if text_presence not in {"present", "absent", "unreadable"}:
                 add_error(
                     errors,
                     "ocr",
                     relative_path,
                     "text_presence_status",
-                    "OCR 识别到文字时文字存在性必须为 present",
+                    "OCR 识别到文字时必须完成人工文字存在性判断",
                     row_number,
                 )
+            elif text_presence != "present":
+                stats["human_overrides"] += 1
+                if not notes:
+                    add_error(
+                        errors,
+                        "ocr",
+                        relative_path,
+                        "ocr_review_notes",
+                        "人工将 OCR 文字结果判为无有效文字或不可辨认时必须记录冲突和依据",
+                        row_number,
+                    )
             if not row.get("ocr_evidence_path", "").strip():
                 add_error(
                     errors,
@@ -778,6 +795,8 @@ def validate_ocr_reviews(
                     "人工发现 OCR 漏字时必须说明并完成手工转录",
                     row_number,
                 )
+            if text_presence != "absent":
+                stats["human_overrides"] += 1
         else:
             text_presence = row.get("text_presence_status", "").strip()
             if text_presence not in {"present", "absent", "unreadable"}:
