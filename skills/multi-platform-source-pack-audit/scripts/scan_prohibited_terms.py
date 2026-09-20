@@ -9,6 +9,7 @@ import hashlib
 import json
 import logging
 import re
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -178,21 +179,48 @@ def required_disposition(
     return "issue"
 
 
+def normalize_scan_text(text: str) -> tuple[str, list[int]]:
+    """统一全半角并过滤空白、标点和格式字符，保留原文位置映射。"""
+
+    characters: list[str] = []
+    positions: list[int] = []
+    for index, character in enumerate(text):
+        for normalized in unicodedata.normalize("NFKC", character):
+            category = unicodedata.category(normalized)
+            if normalized.isspace() or category.startswith("P") or category == "Cf":
+                continue
+            characters.append(normalized)
+            positions.append(index)
+    return "".join(characters), positions
+
+
 def find_term_occurrences(text: str, terms: list[str]) -> list[dict[str, Any]]:
-    """查找规则内不重叠的词语命中位置。"""
+    """查找规则内不重叠的词语候选并返回原文位置。
+
+    参数：
+        text: 人工复核后的图片文字转录。
+        terms: 当前规则配置的候选词列表。
+
+    返回值：
+        包含命中原文、起止位置的候选列表，形式差异由人工结合原图复核。
+    """
 
     occurrences: list[dict[str, Any]] = []
     occupied: list[tuple[int, int]] = []
+    normalized_text, positions = normalize_scan_text(text)
     for term in sorted({str(item) for item in terms}, key=len, reverse=True):
-        pattern = re.compile(re.escape(term), flags=re.IGNORECASE)
-        for match in pattern.finditer(text):
-            span = match.span()
+        normalized_term, _ = normalize_scan_text(term)
+        if not normalized_term:
+            continue
+        pattern = re.compile(re.escape(normalized_term), flags=re.IGNORECASE)
+        for match in pattern.finditer(normalized_text):
+            span = (positions[match.start()], positions[match.end() - 1] + 1)
             if any(span[0] < end and span[1] > start for start, end in occupied):
                 continue
             occupied.append(span)
             occurrences.append(
                 {
-                    "term": match.group(0),
+                    "term": text[span[0]:span[1]],
                     "start": span[0],
                     "end": span[1],
                 }

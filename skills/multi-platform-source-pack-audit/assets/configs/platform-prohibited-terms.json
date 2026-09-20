@@ -12,6 +12,14 @@
   ],
   "rules": [
     {
+      "id": "fengxiangjia-superlatives",
+      "platforms": ["蜂享家"],
+      "categories": ["*"],
+      "terms": ["首席", "顶级"],
+      "rule_type": "prohibited",
+      "suggestion": "删除“首席”“顶级”表述，结合商品真实信息描述具体特点。"
+    },
+    {
       "id": "authority",
       "platforms": ["京东自营", "蜂享家", "唯品会", "猫超", "拼多多"],
       "categories": ["*"],

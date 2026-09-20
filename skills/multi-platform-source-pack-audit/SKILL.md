@@ -2,7 +2,7 @@
 name: multi-platform-source-pack-audit
 description: 对视觉部交付的 KOCOTREE 服装及配饰原始数据包执行多平台处理前质检，优先读取飞书多维表商品资料，通过全包 OCR 和逐图人工复核检查输入包结构与命名、产品信息、服饰 Logo、检测报告、中文文案、单位、字体字形、色差、透明图、详情页、平台驳回词和广告合规，并生成带图片证据的飞书错误清单。用于原始数据包进入 multi-platform-image-processor 前的检查、复查、准入审核和人工处理定位。
 metadata:
-  version: "1.3.1"
+  version: "1.3.2"
 ---
 
 # 多平台原始数据包质检
