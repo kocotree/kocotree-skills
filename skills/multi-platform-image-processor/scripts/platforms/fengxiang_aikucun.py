@@ -4,11 +4,11 @@ import logging
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from common import ensure_dir, add_review_suggestion, list_images
+from common import ensure_dir, add_review_suggestion
 from common.color_naming import color_output_relative_path
 from common.color_text import prepare_color_overrides, rename_color_file
 from common.detail_page_slice import (
-    generate_sequential_detail_pages, merge_long_detail_slices, prepare_ordered_detail_sources,
+    collect_detail_sources, generate_sequential_detail_pages, merge_long_detail_slices, prepare_ordered_detail_sources,
 )
 from common.image_resize_compress import process_jpg_original_or_compress
 from common.scan_source_pack import (
@@ -39,12 +39,12 @@ def derive(
     功能说明：生成主图、SKU、颜色命名白底图和长切片详情页。
     参数：
         source_root：产品素材根目录。
-        tmall_dir：天猫通用版目录。
+        tmall_dir：天猫通用版目录，保留调用接口，详情使用原始源图。
         output_root：产品输出目录。
         report：完整处理报告。
         color_names：白底图源路径到 SKU 颜色名称的映射。
         color_text_plan：目标平台颜色名称的源图文字定位项。
-        detail_plan：共享的详情排序、切分计划。
+        detail_plan：共享的模块识别、切分计划，本平台按源图顺序使用。
         detail_overrides：共享的无损面料修正映射。
     返回值：
         蜂享家＋爱库存输出目录。
@@ -63,13 +63,15 @@ def derive(
         staging = Path(temporary)
         overrides = prepare_color_overrides(source_root, color_text_plan or [], staging / "颜色", detail_overrides)
         _copy_sku800_tree(source_root, platform_dir / "800sku", report, overrides)
-        detail_sources = list_images(tmall_dir / "790详情页")
+        detail_sources = [overrides.get(path.resolve(), path) for path in collect_detail_sources(source_root)]
         independent_count = 0
         if color_text_plan and detail_plan is None:
             raise ValueError("颜色改字需要共享详情计划，以保持目标平台的详情顺序")
         if detail_plan is not None:
-            ordered = prepare_ordered_detail_sources(source_root, detail_plan, staging / "模块", report, overrides)
-            sequence = report["详情页模块"]["模块顺序"]
+            ordered = prepare_ordered_detail_sources(
+                source_root, detail_plan, staging / "模块", report, overrides, preserve_source_order=True,
+            )
+            sequence = report["蜂享家详情页模块"]["模块顺序"]
             kv_index = next((i for i, item in enumerate(sequence) if item["类型"] == "KV"), 0)
             # KV前整张源图按首次出现顺序保留，分段计划中的同一源图合为一张。
             following_sources = {item["源图"] for item in sequence[kv_index:]}

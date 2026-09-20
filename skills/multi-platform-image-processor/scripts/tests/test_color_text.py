@@ -11,6 +11,7 @@ from PIL import Image, ImageChops, ImageDraw
 
 from common.color_text import _clean_glyph_mask, prepare_color_overrides, rename_color_file, replace_color_glyphs
 from common.utils import new_report
+from common.detail_page_slice import prepare_ordered_detail_sources
 from platforms.fengxiang_aikucun import _batch_color_jpg, _batch_jpg, _copy_sku800_tree, derive
 
 
@@ -218,3 +219,32 @@ class ColorTextTests(unittest.TestCase):
                 self.assertEqual(heights, [1700] + [100] * (count - 1) + [200])
                 self.assertEqual(shared.read_bytes(), original)
                 self.assertFalse(report["失败项"])
+
+    def test_fengxiang_keeps_original_order_while_shared_plan_reorders(self):
+        """验证蜂享家保留卖点后产品信息和尺码位置，其他平台仍按模块排序。"""
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            detail = root / "详情"
+            detail.mkdir()
+            kinds = ["品牌背书", "KV", "卖点", "产品信息", "尺码表"]
+            colors = [(30 + i * 40, 30, 30) for i in range(5)]
+            sources = []
+            modules = []
+            for i, kind in enumerate(kinds):
+                source = detail / f"{i:02d}.png"
+                Image.new("RGB", (790, 100), colors[i]).save(source)
+                sources.append(source)
+                modules.append({"图片": f"详情/{source.name}", "类型": kind})
+            plan = root / "plan.json"
+            plan.write_text(json.dumps({"详情模块": list(reversed(modules))}), encoding="utf-8")
+            report = new_report(root, None, root / "output")
+            shared = prepare_ordered_detail_sources(root, plan, root / "shared", report)
+            self.assertEqual(shared, [sources[i] for i in (0, 1, 3, 4, 2)])
+            output = derive(root, root / "天猫", root / "output", report, {}, detail_plan=plan)
+            with Image.open(output / "790详情页/详情图-02.jpg") as image:
+                self.assertEqual(image.size, (790, 400))
+                for i, color in enumerate(colors[1:]):
+                    self.assertLessEqual(max(abs(a - b) for a, b in zip(image.getpixel((100, i * 100 + 50)), color)), 3)
+            self.assertEqual([item["类型"] for item in report["详情页模块"]["模块顺序"]],
+                             ["品牌背书", "KV", "产品信息", "尺码表", "卖点"])
+            self.assertEqual([item["类型"] for item in report["蜂享家详情页模块"]["模块顺序"]], kinds)

@@ -126,6 +126,7 @@ def prepare_ordered_detail_sources(
     staging_dir: Path,
     report: dict,
     source_overrides: dict[Path, Path] | None = None,
+    preserve_source_order: bool = False,
 ) -> list[Path]:
     """根据 Agent 视觉计划校验、拆分并排序详情页模块。
 
@@ -135,6 +136,7 @@ def prepare_ordered_detail_sources(
         staging_dir：需要拆分的模块临时输出目录。
         report：用于记录模块顺序和校验结果的报告。
         source_overrides：原始详情图到临时修正版的可选映射。
+        preserve_source_order：为真时按源图及图内区域顺序排列，默认按业务模块类型排序。
     返回值：
         按业务顺序排列的原图或水平拆分图路径。
     """
@@ -187,7 +189,7 @@ def prepare_ordered_detail_sources(
     ordered = sorted(
         parsed,
         key=lambda item: (
-            详情模块顺序[item["类型"]],
+            0 if preserve_source_order else 详情模块顺序[item["类型"]],
             item["源顺序"],
             item["区域顺序"],
             item["计划顺序"],
@@ -219,7 +221,8 @@ def prepare_ordered_detail_sources(
                 "区域": list(box) if box is not None else [],
             }
         )
-    report["详情页模块"] = {"计划路径": str(plan_path), "模块顺序": sequence}
+    report_key = "蜂享家详情页模块" if preserve_source_order else "详情页模块"
+    report[report_key] = {"计划路径": str(plan_path), "模块顺序": sequence}
     logger.info(
         "详情页模块准备完成 source_count=%d module_count=%d",
         len(source_paths),
