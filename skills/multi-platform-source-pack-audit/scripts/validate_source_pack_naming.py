@@ -11,7 +11,6 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from cleanup_work import DEFAULT_WORK_DIR, cleanup_work_directory
 from PIL import Image, UnidentifiedImageError
 
 LOGGER = logging.getLogger("source_pack_naming")
@@ -721,12 +720,7 @@ def main() -> int:
     args = parse_args()
     configure_logging(args.log_level)
     try:
-        cleanup_work_directory(work_dir=DEFAULT_WORK_DIR)
         validate_source_pack_naming(args.root, args.config, args.output)
-        cleanup_work_directory(
-            work_dir=DEFAULT_WORK_DIR,
-            protected_paths=[args.output.resolve().parent],
-        )
     except Exception:
         LOGGER.exception("原始输入包目录与命名质检失败")
         return 1

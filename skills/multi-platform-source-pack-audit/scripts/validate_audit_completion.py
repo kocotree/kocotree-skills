@@ -11,7 +11,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from cleanup_work import DEFAULT_WORK_DIR, cleanup_work_directory
 from validate_visual_review import (
     DEFAULT_CONFIG as DEFAULT_VISUAL_CONFIG,
 )
@@ -1394,16 +1393,6 @@ def main() -> int:
     args = parse_args()
     configure_logging(args.log_level)
     try:
-        cleanup_work_directory(
-            work_dir=DEFAULT_WORK_DIR,
-            protected_paths=[
-                args.inventory.parent,
-                args.reference_data.parent,
-                args.ocr_results.parent,
-                args.prohibited_term_audit.parent,
-                args.summary_output.parent,
-            ],
-        )
         LOGGER.info("开始校验完整审核台账：%s", args.inventory.resolve())
         visual_config = load_visual_config(args.visual_config)
         ocr_config = load_ocr_config(args.ocr_config)
@@ -1429,16 +1418,6 @@ def main() -> int:
             LOGGER.error("完整审核校验未通过：%s 项", summary["error_count"])
             return 1
         LOGGER.info("完整审核校验通过：%s", summary["stats"])
-        cleanup_work_directory(
-            work_dir=DEFAULT_WORK_DIR,
-            protected_paths=[
-                args.inventory.parent,
-                args.reference_data.parent,
-                args.ocr_results.parent,
-                args.prohibited_term_audit.parent,
-                args.summary_output.parent,
-            ],
-        )
     except Exception:
         LOGGER.exception("完整审核校验失败")
         return 1

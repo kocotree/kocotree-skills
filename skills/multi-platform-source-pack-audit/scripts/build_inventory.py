@@ -13,7 +13,6 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from cleanup_work import DEFAULT_WORK_DIR, cleanup_work_directory
 from PIL import Image, UnidentifiedImageError
 
 LOGGER = logging.getLogger("source_pack_inventory")
@@ -783,7 +782,6 @@ def main() -> int:
     args = parse_args()
     configure_logging(args.log_level)
     try:
-        cleanup_work_directory(work_dir=DEFAULT_WORK_DIR)
         build_inventory(
             root=args.root,
             output=args.output,
@@ -793,13 +791,6 @@ def main() -> int:
     except Exception:
         LOGGER.exception("原始数据包盘点失败")
         return 1
-    protected_paths = [args.output.parent]
-    if args.summary_output is not None:
-        protected_paths.append(args.summary_output.parent)
-    cleanup_work_directory(
-        work_dir=DEFAULT_WORK_DIR,
-        protected_paths=protected_paths,
-    )
     return 0
 
 

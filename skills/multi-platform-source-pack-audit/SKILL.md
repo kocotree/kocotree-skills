@@ -2,7 +2,7 @@
 name: multi-platform-source-pack-audit
 description: 对视觉部交付的 KOCOTREE 服装及配饰原始数据包执行多平台处理前质检，优先读取飞书多维表商品资料，通过全包 OCR 和逐图人工复核检查输入包结构与命名、产品信息、服饰 Logo、检测报告、中文文案、单位、字体字形、色差、透明图、详情页、平台驳回词和广告合规，并生成带图片证据的飞书错误清单。用于原始数据包进入 multi-platform-image-processor 前的检查、复查、准入审核和人工处理定位。
 metadata:
-  version: "1.3.2"
+  version: "1.3.3"
 ---
 
 # 多平台原始数据包质检
@@ -64,7 +64,7 @@ metadata:
 
 所有 Python 脚本统一在 Skill 的 `scripts` 目录运行。`uv` 项目文件、锁文件和虚拟环境分别固定为 `scripts/pyproject.toml`、`scripts/uv.lock` 和 `scripts/.venv`。
 
-所有台账、截图、长图、OCR、PDF 提取、证据图和报告中间文件统一放在 `scripts/work/<任务标识>`。`scripts/work-config.json` 将工作目录容量上限设为200 MiB；脚本运行前后检查容量，超限时优先清理最旧任务，并保护当前任务目录。
+所有台账、截图、长图、OCR、PDF 提取、证据图和报告中间文件统一放在 `scripts/work/<任务标识>`。工作目录按任务保留运行产物，容量由可用磁盘空间决定；历史任务由用户按需清理。
 
 首次运行或依赖发生变化时，在 `scripts` 目录同步环境：
 
@@ -116,12 +116,6 @@ uv run python -X utf8 .\extract_xls.py "<产品信息表.xls>" --output ".\work\
 ```
 
 核对 JSON 中的源文件路径、SHA-256、工作表名称、行列数、合并区域和单元格数据。该脚本只读输入工作簿，仅在当前任务工作目录写入 JSON。
-
-可单独检查或清理工作目录：
-
-```powershell
-uv run python .\cleanup_work.py
-```
 
 人工完成字体专项台账后执行闭环校验：
 

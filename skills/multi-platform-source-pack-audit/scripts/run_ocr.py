@@ -13,7 +13,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-from cleanup_work import DEFAULT_WORK_DIR, cleanup_work_directory
 from PIL import Image, ImageDraw, ImageOps
 from rapidocr import RapidOCR
 
@@ -600,14 +599,6 @@ def main() -> int:
     args = parse_args()
     configure_logging(args.log_level)
     try:
-        cleanup_work_directory(
-            work_dir=DEFAULT_WORK_DIR,
-            protected_paths=[
-                args.inventory.parent,
-                args.results_output.parent,
-                args.evidence_dir,
-            ],
-        )
         LOGGER.info("开始全包 OCR：%s", args.package_root.resolve())
         summary = run_ocr(
             package_root=args.package_root,
@@ -623,14 +614,6 @@ def main() -> int:
             summary["success_count"],
             summary["no_text_count"],
             summary["failed_count"],
-        )
-        cleanup_work_directory(
-            work_dir=DEFAULT_WORK_DIR,
-            protected_paths=[
-                args.inventory.parent,
-                args.results_output.parent,
-                args.evidence_dir,
-            ],
         )
         return 0 if summary["scan_complete"] else 1
     except Exception:

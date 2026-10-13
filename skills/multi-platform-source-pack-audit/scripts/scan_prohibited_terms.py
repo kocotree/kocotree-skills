@@ -13,7 +13,6 @@ import unicodedata
 from pathlib import Path
 from typing import Any
 
-from cleanup_work import DEFAULT_WORK_DIR, cleanup_work_directory
 
 LOGGER = logging.getLogger("prohibited_term_scanner")
 DEFAULT_CONFIG = (
@@ -437,10 +436,6 @@ def main() -> int:
     args = parse_args()
     configure_logging(args.log_level)
     try:
-        cleanup_work_directory(
-            work_dir=DEFAULT_WORK_DIR,
-            protected_paths=[args.inventory.parent, args.output.parent],
-        )
         resolved_output = args.output.resolve()
         if resolved_output.exists() and not args.force:
             raise FileExistsError(
@@ -468,10 +463,6 @@ def main() -> int:
             "平台驳回词扫描完成：文字图片=%s，命中=%s",
             result["images_with_text"],
             result["hit_count"],
-        )
-        cleanup_work_directory(
-            work_dir=DEFAULT_WORK_DIR,
-            protected_paths=[args.inventory.parent, args.output.parent],
         )
     except Exception:
         LOGGER.exception("平台驳回词扫描失败")

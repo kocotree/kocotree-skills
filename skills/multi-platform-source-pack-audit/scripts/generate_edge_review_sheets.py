@@ -14,7 +14,6 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageOps
 
-from cleanup_work import DEFAULT_WORK_DIR, cleanup_work_directory
 
 LOGGER = logging.getLogger("edge_review_sheets")
 DEFAULT_CONFIG = (
@@ -374,10 +373,6 @@ def main() -> int:
         LOGGER.error("--limit 必须是正整数")
         return 1
     try:
-        cleanup_work_directory(
-            work_dir=DEFAULT_WORK_DIR,
-            protected_paths=[args.output_dir],
-        )
         config = load_config(args.config)
         generate_review_sheets(
             root=args.root,
@@ -385,10 +380,6 @@ def main() -> int:
             config=config,
             all_images=args.all_images,
             limit=args.limit,
-        )
-        cleanup_work_directory(
-            work_dir=DEFAULT_WORK_DIR,
-            protected_paths=[args.output_dir],
         )
     except Exception:
         LOGGER.exception("边缘审阅图生成失败")

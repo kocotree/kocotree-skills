@@ -14,11 +14,11 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from cleanup_work import DEFAULT_WORK_DIR, cleanup_work_directory
 
 
 LOGGER = logging.getLogger("base_reference_data_fetcher")
 SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_WORK_DIR = SCRIPT_DIR / "work"
 SKILL_DIR = SCRIPT_DIR.parent
 DEFAULT_CONFIG = SKILL_DIR / "assets" / "configs" / "reference-data-sources.json"
 WINDOWS_INVALID_FILENAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -611,10 +611,6 @@ def main() -> int:
         if not product_code:
             raise ValueError("KQ 货号不能为空")
         output_dir = ensure_output_directory(args.output_dir)
-        cleanup_work_directory(
-            work_dir=DEFAULT_WORK_DIR,
-            protected_paths=[output_dir],
-        )
         config = load_config(args.config)
         result = fetch_reference_data(
             product_code=product_code,
@@ -629,10 +625,6 @@ def main() -> int:
             encoding="utf-8",
         )
         LOGGER.info("已写入多维表商品资料：%s", result_path)
-        cleanup_work_directory(
-            work_dir=DEFAULT_WORK_DIR,
-            protected_paths=[output_dir],
-        )
     except Exception as exc:
         LOGGER.exception("多维表商品资料读取失败")
         if output_dir is not None:
