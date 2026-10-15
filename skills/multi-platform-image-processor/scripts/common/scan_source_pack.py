@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+from functools import lru_cache
 from pathlib import Path
 
 from .utils import list_images
+from .settings import config_root, load_json_config
 
 
 SKU赠品分支 = {"加赠品", "无赠品"}
@@ -14,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 源目录规则 = {
+    "主图": Path("主图"),
+    "详情": Path("详情"),
     "主图800": Path("主图") / "800",
     "主图1440": Path("主图") / "1440",
     "主图750": Path("主图") / "750",
@@ -27,9 +31,27 @@ logger = logging.getLogger(__name__)
     "详情下": Path("详情") / "静态" / "下",
     "素材图": Path("素材图"),
 }
-源目录别名 = {
-    "素材图": (Path("素材图"), Path("场景图")),
-}
+@lru_cache(maxsize=1)
+def source_directory_aliases() -> dict[str, list[str]]:
+    """读取输入素材分类的目录别名配置。"""
+    return load_json_config(config_root() / "source_directory_aliases.json")
+
+
+def _resolve_group_root(source_root: Path, name: str) -> Path:
+    """按标准名称及配置顺序定位同级目录，英文名称忽略大小写。"""
+    if not source_root.is_dir():
+        return source_root / name
+    directories = {child.name.casefold(): child for child in source_root.iterdir() if child.is_dir()}
+    matches = [directories[value.casefold()] for value in [name, *source_directory_aliases().get(name, [])]
+               if value.casefold() in directories]
+    if not matches:
+        return source_root / name
+    if len(matches) > 1:
+        logger.warning("同类素材目录存在多个候选，按配置优先级读取 group=%s selected=%s candidates=%s",
+                       name, matches[0], matches)
+    if matches[0].name != name:
+        logger.info("输入素材目录使用别名 group=%s path=%r", name, str(matches[0]))
+    return matches[0]
 
 
 def resolve_source_path(source_root: Path, key: str) -> Path:
@@ -42,36 +64,18 @@ def resolve_source_path(source_root: Path, key: str) -> Path:
         当前文件系统中实际使用的素材目录路径；未找到时返回标准路径。
     """
     rel = 源目录规则[key]
-    for candidate in 源目录别名.get(key, ()):
-        path = source_root / candidate
-        if path.is_dir():
-            if candidate != rel:
-                logger.info("输入素材目录使用别名 key=%s path=%r", key, str(path))
-            return path
-    if not rel.parts or rel.parts[0].casefold() != "sku":
-        return source_root / rel
-    sku_root = resolve_sku_root(source_root)
-    return sku_root.joinpath(*rel.parts[1:])
+    return _resolve_group_root(source_root, rel.parts[0]).joinpath(*rel.parts[1:])
 
 
 def resolve_sku_root(source_root: Path) -> Path:
-    """以不区分大小写的方式定位 SKU 根目录。
+    """按标准名称及目录别名定位 SKU 根目录，英文忽略大小写。
 
     参数：
         source_root：数据包根目录。
     返回值：
-        唯一匹配的 SKU 根目录；未找到时返回标准路径 `SKU`。
+        按标准名称优先、别名配置顺序选定的根目录；未找到时返回标准路径 `SKU`。
     """
-    standard = source_root / "SKU"
-    if not source_root.exists():
-        return standard
-    matches = [
-        child for child in source_root.iterdir()
-        if child.is_dir() and child.name.casefold() == "sku"
-    ]
-    if len(matches) == 1:
-        return matches[0]
-    return standard
+    return _resolve_group_root(source_root, "SKU")
 
 
 def has_gift_sku_branches(source_root: Path) -> bool:

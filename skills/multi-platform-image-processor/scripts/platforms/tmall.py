@@ -13,7 +13,6 @@ from common.image_resize_compress import (
     process_png_original_or_compress,
 )
 from common.scan_source_pack import (
-    源目录规则,
     get_image_group,
     has_sku_business_branches,
     resolve_source_path,
@@ -51,7 +50,7 @@ def build(
     _copy_sku_tree(source_root, platform_dir / "sku", report)
     _batch_color_jpg(
         get_image_group(source_root, "白底图", recursive=True),
-        source_root / 源目录规则["白底图"],
+        resolve_source_path(source_root, "白底图"),
         platform_dir / "800白底图",
         "800白底图",
         report,
@@ -59,7 +58,7 @@ def build(
     )
     _batch_color_png(
         get_image_group(source_root, "透明图", recursive=True),
-        source_root / 源目录规则["透明图"],
+        resolve_source_path(source_root, "透明图"),
         platform_dir / "800透明图",
         "800透明图",
         report,

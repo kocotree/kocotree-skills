@@ -8,6 +8,7 @@ from pathlib import Path
 from PIL import Image
 
 from .utils import list_images, ensure_dir, add_failure, add_risk, add_warning
+from .scan_source_pack import resolve_source_path
 from .image_resize_compress import open_image, save_jpg_under
 
 
@@ -44,7 +45,7 @@ def collect_detail_sources(source_root: Path) -> list[Path]:
     返回值：
         按详情页展示顺序排列的源图片路径。
     """
-    detail_root = source_root / "详情"
+    detail_root = resolve_source_path(source_root, "详情")
     root_images = list_images(detail_root)
     if root_images:
         logger.info(

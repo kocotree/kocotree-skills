@@ -9,6 +9,7 @@ from .scan_source_pack import (
     get_sku800_recursive,
     has_gift_sku_branches,
     resolve_sku_root,
+    resolve_source_path,
 )
 
 
@@ -61,7 +62,7 @@ def resolve_color_names(
     }
     resolved: dict[Path, str] = {}
     for group in ("白底图", "透明图"):
-        group_root = source_root / group
+        group_root = resolve_source_path(source_root, group)
         used: set[Path] = set()
         for source in get_image_group(source_root, group, recursive=True):
             relative = source.relative_to(source_root).as_posix()
