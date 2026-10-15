@@ -1,0 +1,7 @@
+interface:
+  display_name: "多平台优化"
+  short_description: "规范处理主图、详情页和 SKU，生成多平台优化数据包"
+  default_prompt: "使用 $multi-platform-optimizer 优化我提供的商品图片数据包。"
+
+policy:
+  allow_implicit_invocation: true
