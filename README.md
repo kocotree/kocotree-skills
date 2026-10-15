@@ -28,3 +28,4 @@ kocotree skills 合集
 | [visual-detail-image-processor](skills/visual-detail-image-processor/) | 批量生成 790px 商品详情页模块（产品信息、透明图、尺码图、模特图） | 基于 2000px 模板渲染，支持批处理和 AI 模特图选框 |  | 花菜、鸭腿开发 |
 | [sku-image-processor](skills/sku-image-processor/) | 生成服装类 1440×1440 SKU 模板图（模特图、透明商品图、颜色名） | 支持批处理、YOLO 骨架辅助、裁切标注校验和背景补齐 | ✅ | 花菜、鸭腿开发 |
 | [multi-platform-source-pack-audit](skills/multi-platform-source-pack-audit/) | 多平台处理前质检视觉部服装及配饰原始数据包 | 逐目录、逐文件、逐图片检查并生成带证据的飞书错误清单 |  | 鸭腿开发 |
+| [multi-platform-optimizer](skills/multi-platform-optimizer/) | 优化商品图片包中的主图、详情页和 SKU，生成多平台优化包 | 支持完整数据包、单独类别及局部改款详情处理，统一输出 JPG 并压缩至每张 500KB 以内 |  | 青提开发 |
