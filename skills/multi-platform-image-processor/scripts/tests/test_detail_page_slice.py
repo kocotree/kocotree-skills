@@ -23,6 +23,35 @@ def create_rgb(path: Path, size: tuple[int, int] = (16, 12)) -> None:
 class DetailPageSliceTests(unittest.TestCase):
     """验证详情页模块计划的排序与拆分。"""
 
+    def test_continuous_selection_group_moves_without_reordering_members(self) -> None:
+        """验证两种选购布局整体前移，蜂享家及独立挑颜色保持源顺序。"""
+        for with_icon in (False, True):
+            for selection in (["挑颜色", "挑颜色", "产品信息"], ["产品信息", "挑颜色", "挑颜色"]):
+                with self.subTest(icon=with_icon, selection=selection), TemporaryDirectory() as temp_dir:
+                    root = Path(temp_dir)
+                    prefix = ["品牌背书", "KV"] + (["图标说明"] if with_icon else [])
+                    kinds = prefix + ["卖点"] + selection + ["尺码表", "模特", "挑颜色"]
+                    modules = []
+                    paths = []
+                    for index, kind in enumerate(kinds):
+                        path = root / "详情" / f"{index:02d}.jpg"
+                        create_rgb(path)
+                        paths.append(path)
+                        item = {"类型": kind, "图片": str(path.relative_to(root))}
+                        if len(prefix) < index < len(prefix) + 5:
+                            item["连续组"] = "选购信息"
+                        modules.append(item)
+                    plan = root / "plan.json"
+                    plan.write_text(json.dumps({"详情模块": list(reversed(modules))}), encoding="utf-8")
+                    report = {}
+                    actual = prepare_ordered_detail_sources(root, plan, root / "stage", report)
+                    p = len(prefix)
+                    self.assertEqual(actual, paths[:p] + paths[p+1:p+5] + [paths[p]] + paths[p+5:])
+                    original = prepare_ordered_detail_sources(
+                        root, plan, root / "fengxiang", report, preserve_source_order=True,
+                    )
+                    self.assertEqual(original, paths)
+
     def test_collects_images_directly_under_detail_directory(self) -> None:
         """验证详情目录平铺图片能够直接参与处理。"""
         with TemporaryDirectory() as temp_dir:

@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
     "产品规格": 5,
     "尺码表": 5,
     "尺码快选": 6,
+    "挑颜色": 7,
     "卖点": 7,
     "面料": 7,
     "认证": 7,
@@ -129,7 +130,7 @@ def prepare_ordered_detail_sources(
     source_overrides: dict[Path, Path] | None = None,
     preserve_source_order: bool = False,
 ) -> list[Path]:
-    """根据 Agent 视觉计划校验、拆分并排序详情页模块。
+    """根据 Agent 视觉计划按连续组排序，再裁切详情页模块。
 
     参数：
         source_root：数据包根目录。
@@ -137,7 +138,7 @@ def prepare_ordered_detail_sources(
         staging_dir：需要拆分的模块临时输出目录。
         report：用于记录模块顺序和校验结果的报告。
         source_overrides：原始详情图到临时修正版的可选映射。
-        preserve_source_order：为真时按源图及图内区域顺序排列，默认按业务模块类型排序。
+        preserve_source_order：为真时按源图及图内区域顺序排列，默认按连续组的业务优先级排序。
     返回值：
         按业务顺序排列的原图或水平拆分图路径。
     """
@@ -173,6 +174,7 @@ def prepare_ordered_detail_sources(
         parsed.append(
             {
                 "类型": module_type,
+                "连续组": str(item.get("连续组") or "").strip(),
                 "源图": source,
                 "区域": box,
                 "源顺序": source_order[source.resolve()],
@@ -187,15 +189,30 @@ def prepare_ordered_detail_sources(
     for source in source_paths:
         _validate_source_coverage(source, represented[source.resolve()])
 
-    ordered = sorted(
+    source_sorted = sorted(
         parsed,
         key=lambda item: (
-            0 if preserve_source_order else 详情模块顺序[item["类型"]],
             item["源顺序"],
             item["区域顺序"],
             item["计划顺序"],
         ),
     )
+    ordered = source_sorted
+    if not preserve_source_order:
+        groups: dict[tuple, list[dict]] = {}
+        for item in source_sorted:
+            key = ("组", item["连续组"]) if item["连续组"] else ("项", item["计划顺序"])
+            groups.setdefault(key, []).append(item)
+        # 连续组作为排序单元，以最靠前的业务类型定位，组内保留源顺序。
+        ordered = [
+            item
+            for group in sorted(
+                groups.values(),
+                key=lambda group: min(详情模块顺序[item["类型"]] for item in group),
+            )
+            for item in group
+        ]
+        logger.info("详情页按连续组排序 module_count=%d group_count=%d", len(parsed), len(groups))
     overrides = {
         source.resolve(): replacement
         for source, replacement in (source_overrides or {}).items()
@@ -217,6 +234,7 @@ def prepare_ordered_detail_sources(
             {
                 "顺序": index,
                 "类型": item["类型"],
+                "连续组": item["连续组"],
                 "源图": str(source),
                 "面料已修正": render_source != source,
                 "区域": list(box) if box is not None else [],
