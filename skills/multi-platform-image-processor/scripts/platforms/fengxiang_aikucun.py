@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 from common import ensure_dir, add_review_suggestion
 from common.color_naming import color_output_relative_path
 from common.color_text import prepare_color_overrides, rename_color_file
+from common.sku_naming import sku_output_path
 from common.detail_page_slice import (
     collect_detail_sources, generate_sequential_detail_pages, merge_long_detail_slices, prepare_ordered_detail_sources,
 )
@@ -127,16 +128,18 @@ def _copy_sku800_tree(source_root: Path, output_dir: Path, report: dict,
     sku_root = resolve_sku_root(source_root)
     ensure_dir(output_dir)
     sources = [*get_sku800_recursive(source_root), *get_combination_sku(source_root)]
+    used: set[Path] = set()
     for source in dict.fromkeys(sources):
         relative = source.relative_to(sku_root)
         if len(relative.parts) == 2 and relative.parts[0].casefold() == "800":
             relative = Path(relative.name)
-        output = output_dir / rename_color_file(relative.with_suffix(".jpg"))
+        renamed = rename_color_file(relative.with_suffix(".jpg"))
+        output = sku_output_path(output_dir / renamed, used)
         ensure_dir(output.parent)
         process_jpg_original_or_compress(
             (overrides or {}).get(source.resolve(), source), output, 500 * 1024, report, 平台, "800sku",
         )
-        if output.name != relative.with_suffix(".jpg").name and source.resolve() not in (overrides or {}):
+        if renamed.name != relative.with_suffix(".jpg").name and source.resolve() not in (overrides or {}):
             add_review_suggestion(
                 report, "蜂享家＋爱库存颜色文字核对", [output],
                 "文件名已按颜色规则替换；检查图片中是否仍有原颜色文字，存在时补充源图改字定位后生成。",

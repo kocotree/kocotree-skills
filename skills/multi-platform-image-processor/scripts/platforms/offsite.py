@@ -6,6 +6,7 @@ from pathlib import Path
 
 from common import add_failure, add_review_suggestion, ensure_dir
 from common.color_naming import color_output_relative_path
+from common.sku_naming import sku_output_path
 from common.image_resize_compress import process_jpg_original_or_compress, process_png_original_or_compress
 from common.logo_overlay import find_logo, overlay_logo
 from common.scan_source_pack import (
@@ -217,16 +218,6 @@ def _batch_color_png(
         )
 
 
-def _unique_output_path(path: Path, used: set[Path]) -> Path:
-    candidate = path
-    idx = 2
-    while candidate in used:
-        candidate = path.with_name(f"{path.stem}_{idx}{path.suffix}")
-        idx += 1
-    used.add(candidate)
-    return candidate
-
-
 def _sku_output_path(source: Path, source_base: Path, output_dir: Path, used: set[Path]) -> Path:
     """生成保留通用业务分支的站外 SKU 输出路径。
 
@@ -244,4 +235,4 @@ def _sku_output_path(source: Path, source_base: Path, output_dir: Path, used: se
     is_gift = bool(normalized.intersection(SKU赠品分支))
     is_standard_size = len(directory_parts) == 1 and is_sku_size_directory(directory_parts[0])
     target = output_dir / f"{source.stem}.jpg" if is_gift or is_standard_size else output_dir / relative
-    return _unique_output_path(target, used)
+    return sku_output_path(target, used)

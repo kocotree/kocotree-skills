@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 
 from common import add_failure, add_review_suggestion, ensure_dir
 from common.color_naming import color_output_relative_path
+from common.sku_naming import sku_output_path
 from common.detail_page_slice import generate_sequential_detail_pages, prepare_ordered_detail_sources
 from common.image_resize_compress import (
     process_jpg_canvas,
@@ -193,11 +194,12 @@ def _copy_sku_tree(source_root: Path, output_dir: Path, report: dict) -> None:
         ensure_dir(output_dir / "800")
         ensure_dir(output_dir / "1440")
         logger.info("天猫SKU使用普通尺寸结构 root=%r", str(sku_root))
+    used: set[Path] = set()
     for source in get_image_group(source_root, "SKU", recursive=True):
         relative = source.relative_to(sku_root)
         if len(relative.parts) == 1:
             relative = Path("800") / relative
-        output = output_dir / relative.with_suffix(".jpg")
+        output = sku_output_path(output_dir / relative.with_suffix(".jpg"), used)
         ensure_dir(output.parent)
         process_jpg_original_or_compress(source, output, 500 * 1024, report, 平台, "sku")
 

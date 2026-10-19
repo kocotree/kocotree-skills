@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 from .color_text import rename_color_file
+from .sku_naming import sku_output_path
 
 from .scan_source_pack import (
     get_sku800_recursive,
+    get_combination_sku,
     has_gift_sku_branches,
     has_sku_business_branches,
     resolve_sku_root,
@@ -61,14 +63,20 @@ def audit_sku_branch_outputs(
     sku_root = resolve_sku_root(source_root)
     tmall_root = platform_directories["tmall"] / "sku"
     fengxiang_root = platform_directories["fengxiang-aikucun"] / "800sku"
+    tmall_expected: set[Path] = set()
+    fengxiang_expected: set[Path] = set()
+    for path in list_images(sku_root, recursive=True):
+        sku_output_path(path.relative_to(sku_root).with_suffix(".jpg"), tmall_expected)
+    for path in dict.fromkeys([*get_sku800_recursive(source_root), *get_combination_sku(source_root)]):
+        sku_output_path(rename_color_file(path.relative_to(sku_root).with_suffix(".jpg")), fengxiang_expected)
     _check_relative_image_set(
-        {path.relative_to(sku_root).with_suffix(".jpg") for path in list_images(sku_root, recursive=True)},
+        tmall_expected,
         tmall_root,
         "天猫SKU业务分支与源目录不一致",
         report,
     )
     _check_relative_image_set(
-        {rename_color_file(path.relative_to(sku_root).with_suffix(".jpg")) for path in get_sku800_recursive(source_root)},
+        fengxiang_expected,
         fengxiang_root,
         "蜂享家＋爱库存SKU业务分支与源目录不一致",
         report,
