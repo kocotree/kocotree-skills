@@ -29,3 +29,4 @@ kocotree skills 合集
 | [sku-image-processor](skills/sku-image-processor/) | 生成服装类 1440×1440 SKU 模板图（模特图、透明商品图、颜色名） | 支持批处理、YOLO 骨架辅助、裁切标注校验和背景补齐 | ✅ | 花菜、鸭腿开发 |
 | [multi-platform-source-pack-audit](skills/multi-platform-source-pack-audit/) | 多平台处理前质检视觉部服装及配饰原始数据包 | 逐目录、逐文件、逐图片检查并生成带证据的飞书错误清单 |  | 鸭腿开发 |
 | [multi-platform-optimizer](skills/multi-platform-optimizer/) | 优化商品图片包中的主图、详情页和 SKU，生成多平台优化包 | 支持完整数据包、单独类别及局部改款详情处理，统一输出 JPG 并压缩至每张 500KB 以内 |  | 青提开发 |
+| [kocotree-store-page-excel](skills/kocotree-store-page-excel/) | 整理店铺页面 Excel，补全图片路径、品名短卖点及海报和专区文案 | 原位更新工作簿，保留原布局、工作表显隐及已有卖点，支持 WPS 样式复核 |  | 青提开发 |

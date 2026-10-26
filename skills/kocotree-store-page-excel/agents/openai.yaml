@@ -1,0 +1,7 @@
+interface:
+  display_name: "店铺页面Excel整理"
+  short_description: "按固定规范整理店铺页面Excel、模特图路径与海报卖点文案"
+  default_prompt: "Use $kocotree-store-page-excel to update this store-page Excel in place while preserving the original workbook layout."
+
+policy:
+  allow_implicit_invocation: true
