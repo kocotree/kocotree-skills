@@ -27,7 +27,7 @@ def test_full_package(tmp_path: Path) -> None:
 
     output, summary = optimize_package(source)
 
-    assert output == tmp_path / "测试商品-优化"
+    assert output == tmp_path / "测试商品-全平台"
     expected = {
         output / "主图" / "800" / "01.jpg": (800, 800),
         output / "主图" / "750" / "02.jpg": (750, 1000),
@@ -71,7 +71,44 @@ def test_categories_are_independent(tmp_path: Path) -> None:
 def test_existing_output_is_not_overwritten(tmp_path: Path) -> None:
     source = tmp_path / "商品"
     (source / "主图").mkdir(parents=True)
-    (tmp_path / "商品-优化").mkdir()
+    (tmp_path / "商品-全平台").mkdir()
+    with pytest.raises(FileExistsError):
+        optimize_package(source)
+
+
+def test_already_named_source_is_not_modified(tmp_path: Path) -> None:
+    source = tmp_path / "示例商品-全平台-改面料"
+    original = source / "主图" / "800" / "01.png"
+    make_image(original, (80, 80), (10, 20, 30))
+    before = original.read_bytes()
+
+    with pytest.raises(FileExistsError):
+        optimize_package(source)
+
+    assert original.read_bytes() == before
+    assert list(source.iterdir()) == [source / "主图"]
+
+
+@pytest.mark.parametrize(
+    ("source_name", "expected_name"),
+    [
+        ("KQ12345 示例外套-改填充物", "KQ12345 示例外套-全平台-改填充物"),
+        ("KQ12345 示例外套-尺码表去除100-120", "KQ12345 示例外套-全平台-尺码表去除100-120"),
+        ("KQ-12345 示例外套－改面料", "KQ-12345 示例外套-全平台-改面料"),
+        ("KQ12345 示例外套-全平台-改面料-优化", "KQ12345 示例外套-全平台-改面料"),
+        ("KQ12345 示例外套-改面料-全平台-全平台-优化", "KQ12345 示例外套-全平台-改面料"),
+    ],
+)
+def test_package_naming_preserves_change_notes(tmp_path: Path, source_name: str, expected_name: str) -> None:
+    source = tmp_path / source_name
+    make_image(source / "主图" / "800" / "01.png", (80, 80), (10, 20, 30))
+
+    output, summary = optimize_package(source)
+
+    assert output == tmp_path / expected_name
+    assert (output / "主图" / "800.jpg").is_file()
+    assert (source / "主图" / "800" / "01.png").is_file()
+    assert summary["failures"] == []
     with pytest.raises(FileExistsError):
         optimize_package(source)
 
@@ -108,7 +145,7 @@ def test_single_main_image_uses_file_names_instead_of_subfolders(tmp_path: Path)
 
 
 def test_partial_detail_finds_original_and_replaces_region(tmp_path: Path) -> None:
-    source = tmp_path / "改款商品"
+    source = tmp_path / "改款商品-调整"
     changed = source / "详情页" / "790" / "修改图.png"
     make_image(changed, (790, 200), (240, 20, 20))
     original_package = tmp_path / "改款商品-全平台"
@@ -156,7 +193,7 @@ def test_partial_detail_reports_missing_original_package(tmp_path: Path) -> None
 
 
 def test_multiple_partial_detail_images_keep_original_long_image_names(tmp_path: Path) -> None:
-    source = tmp_path / "双图改款"
+    source = tmp_path / "双图改款-调整"
     first = source / "详情页" / "790" / "修改1.png"
     second = source / "详情页" / "790" / "修改2.png"
     third = source / "详情页" / "790" / "修改3.png"
@@ -182,7 +219,7 @@ def test_multiple_partial_detail_images_keep_original_long_image_names(tmp_path:
         encoding="utf-8",
     )
 
-    output, _ = optimize_package(source, partial_detail=True, replacement_map=mapping)
+    output, _ = optimize_package(source, partial_detail=True, replacement_map=mapping, original_package=original_dir.parents[1])
 
     result_dir = output / "详情页" / "爱库存+蜂享家"
     assert (output / "详情页" / "790" / "修改1.jpg").is_file()
@@ -285,7 +322,7 @@ def test_standalone_category_rejects_multiple_product_codes(tmp_path: Path) -> N
 
 
 def test_detail_near_full_platform_requires_explicit_classification(tmp_path: Path) -> None:
-    source = tmp_path / "KQ60001改款外套"
+    source = tmp_path / "KQ60001改款外套-调整"
     make_image(source / "详情页" / "790" / "603.png", (790, 900), (30, 60, 90))
     (tmp_path / "KQ60001改款外套-全平台").mkdir()
 
@@ -298,7 +335,7 @@ def test_detail_near_full_platform_requires_explicit_classification(tmp_path: Pa
 
 
 def test_partial_detail_rejects_unmodified_original_in_affected_list(tmp_path: Path) -> None:
-    source = tmp_path / "受影响集合校验"
+    source = tmp_path / "受影响集合校验-调整"
     make_image(source / "详情页" / "790" / "修改图.png", (790, 200), (240, 20, 20))
     original_dir = tmp_path / "受影响集合校验-全平台" / "爱库存+蜂享家" / "790详情页"
     make_image(original_dir / "详情图-01.jpg", (790, 1000), (80, 80, 80))
@@ -326,7 +363,7 @@ def test_partial_detail_rejects_unmodified_original_in_affected_list(tmp_path: P
 
 
 def test_detail_alias_and_full_width_replacement_can_change_height(tmp_path: Path) -> None:
-    source = tmp_path / "高度变化改款"
+    source = tmp_path / "高度变化改款-调整"
     changed = source / "详情" / "790" / "613.jpg"
     make_image(changed, (790, 300), (240, 120, 20))
     original_dir = tmp_path / "高度变化改款-全平台" / "爱库存+蜂享家" / "790详情页"
@@ -346,7 +383,7 @@ def test_detail_alias_and_full_width_replacement_can_change_height(tmp_path: Pat
         encoding="utf-8",
     )
 
-    output, summary = optimize_package(source, partial_detail=True, replacement_map=mapping)
+    output, summary = optimize_package(source, partial_detail=True, replacement_map=mapping, original_package=original_dir.parents[1])
 
     result = output / "详情页" / "爱库存+蜂享家.jpg"
     assert result.is_file()
@@ -356,7 +393,7 @@ def test_detail_alias_and_full_width_replacement_can_change_height(tmp_path: Pat
 
 
 def test_partial_detail_insert_preserves_existing_long_image_content(tmp_path: Path) -> None:
-    source = tmp_path / "新增详情模块"
+    source = tmp_path / "新增详情模块-调整"
     changed = source / "详情页" / "790" / "613.jpg"
     make_image(changed, (790, 200), (240, 120, 20))
     original_dir = tmp_path / "新增详情模块-全平台" / "爱库存+蜂享家" / "790详情页"

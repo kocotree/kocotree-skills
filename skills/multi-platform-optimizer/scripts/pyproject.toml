@@ -1,6 +1,6 @@
 [project]
 name = "multi-platform-optimizer"
-version = "0.2.2"
+version = "0.2.3"
 description = "Optimize main images, detail pages, and SKU folders in a product image package"
 requires-python = ">=3.10"
 dependencies = [

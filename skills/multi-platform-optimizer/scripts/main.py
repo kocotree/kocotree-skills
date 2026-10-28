@@ -4,6 +4,7 @@ import argparse
 from difflib import SequenceMatcher
 import io
 import json
+import logging
 import re
 import shutil
 import sys
@@ -16,6 +17,26 @@ from PIL import Image, ImageOps
 MAX_BYTES = 500 * 1024
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 PRODUCT_CODE_RE = re.compile(r"(?i)([a-z]{1,8}[-_]?\d{3,})")
+logger = logging.getLogger(__name__)
+
+
+def optimized_package_name(name: str) -> str:
+    """生成完整包名称；name 为源文件夹名，返回商品名、全平台标记及改款说明组成的名称。"""
+    value = name.replace("－", "-").strip()
+    value = re.sub(r"(?:-优化)+$", "", value)
+    # 款号内部的连字符属于款号，商品说明从款号后的首个连字符开始。
+    code = PRODUCT_CODE_RE.match(value)
+    split_at = code.end() if code else 0
+    separator = value.find("-", split_at)
+    if separator < 0:
+        product, notes = value, []
+    else:
+        product = value[:separator].rstrip()
+        notes = [part.strip() for part in value[separator + 1:].split("-") if part.strip()]
+    notes = [part for part in notes if part != "全平台"]
+    result = "-".join([product, "全平台", *notes])
+    logger.info("完整包输出命名：%s -> %s", name, result)
+    return result
 
 
 def natural_key(path: Path) -> tuple:
@@ -632,7 +653,7 @@ def optimize_package(
         target = source.parent / f"{identity}-{target_suffix}优化"
     else:
         category_name = ""
-        target = source.parent / f"{source.name}-优化"
+        target = source.parent / optimized_package_name(source.name)
     if target.exists():
         raise FileExistsError(f"输出文件夹已存在，未覆盖：{target}")
 
@@ -732,6 +753,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = parse_args(argv or sys.argv[1:])
     try:
         _, summary = optimize_package(
