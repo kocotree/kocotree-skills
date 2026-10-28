@@ -330,6 +330,8 @@ def process_original_jpg(source: Path, output: Path) -> Path:
 
 
 def build_main(source: Path, output: Path, summary: dict) -> None:
+    """处理主图。source 为主图来源目录，output 为输出目录，summary 累计结果；返回 None。"""
+    logger.info("开始处理主图：%s", source)
     output.mkdir(parents=True, exist_ok=True)
     preserved_sources = {
         "800": source / "800",
@@ -345,6 +347,17 @@ def build_main(source: Path, output: Path, summary: dict) -> None:
     if len(all_images) == 1:
         image = all_images[0]
         relative = image.relative_to(source)
+        source_type = relative.parts[0] if len(relative.parts) > 1 else ""
+        if source_type not in preserved_sources:
+            with open_rgb(image) as opened:
+                if opened.width == opened.height:
+                    source_type = "800"
+                elif opened.height > opened.width:
+                    source_type = "750"
+                else:
+                    logger.warning("无法识别单张主图类型：%s，尺寸为 %s", image, opened.size)
+                    raise ValueError(f"单张主图应为方图或竖向长图，请确认图片或放入 800、750 来源目录：{image}")
+        logger.info("单张主图使用 %s 来源规则：%s", source_type, image)
         if relative.parts and relative.parts[0] in preserved_sources:
             preserved_name = relative.parts[0]
             try:
@@ -354,12 +367,17 @@ def build_main(source: Path, output: Path, summary: dict) -> None:
                 summary["failures"].append(
                     f"单图主图原尺寸保留失败：{image} -> {preserved_name}.jpg：{exc}"
                 )
-        for name, (_, size) in targets.items():
+        for name, (source_dir, size) in targets.items():
+            if source_dir.name != source_type:
+                continue
             try:
                 save_jpg_under(fit_canvas(open_rgb(image), size), output / f"{name}.jpg")
                 summary["images"] += 1
+                logger.info("主图生成完成：%s，尺寸 %s", output / f"{name}.jpg", size)
             except Exception as exc:
+                logger.warning("单张主图处理失败：%s -> %s.jpg：%s", image, name, exc)
                 summary["failures"].append(f"单图主图处理失败：{image} -> {name}.jpg：{exc}")
+        logger.info("单张主图处理结束：%s", output)
         return
     for name, source_dir in preserved_sources.items():
         target_dir = output / name

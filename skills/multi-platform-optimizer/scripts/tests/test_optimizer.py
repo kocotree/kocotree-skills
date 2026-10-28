@@ -131,9 +131,7 @@ def test_single_main_image_uses_file_names_instead_of_subfolders(tmp_path: Path)
     expected = {
         "800.jpg": (800, 800),
         "1440.jpg": (1440, 1440),
-        "1080.jpg": (1080, 1440),
         "750正.jpg": (750, 750),
-        "1920.jpg": (1440, 1920),
     }
     for name, size in expected.items():
         path = output / "主图" / name
@@ -142,6 +140,43 @@ def test_single_main_image_uses_file_names_instead_of_subfolders(tmp_path: Path)
             assert image.size == size
     assert not (output / "主图" / "1440").exists()
     assert not (output / "主图" / "800").exists()
+    assert {path.name for path in (output / "主图").iterdir()} == set(expected)
+
+
+@pytest.mark.parametrize("source_folder", ["750", ""])
+def test_single_portrait_main_generates_only_portrait_sizes(tmp_path: Path, source_folder: str) -> None:
+    source = tmp_path / "KQ10001 示例商品"
+    original = source / "主图" / source_folder / "长图.png"
+    make_image(original, (750, 1000), (30, 60, 90))
+
+    output, summary = optimize_package(source)
+
+    expected = {"1080.jpg": (1080, 1440), "1920.jpg": (1440, 1920)}
+    if source_folder:
+        expected["750.jpg"] = (750, 1000)
+    assert {path.name for path in (output / "主图").iterdir()} == set(expected)
+    for name, size in expected.items():
+        with Image.open(output / "主图" / name) as image:
+            assert image.size == size
+            assert image.format == "JPEG"
+            assert image.convert("RGB").getpixel((0, 0))[0] < 100
+        assert (output / "主图" / name).stat().st_size <= 500 * 1024
+    assert summary["status"] == "完成"
+    assert original.is_file()
+
+
+def test_single_square_at_standalone_main_root_generates_only_square_sizes(tmp_path: Path) -> None:
+    source = tmp_path / "KQ10002 示例外套" / "主图"
+    make_image(source / "方图.png", (800, 800), (30, 60, 90))
+
+    output, summary = optimize_package(source)
+
+    assert {path.name for path in output.iterdir()} == {"1440.jpg", "750正.jpg"}
+    with Image.open(output / "1440.jpg") as image:
+        assert image.size == (1440, 1440)
+    with Image.open(output / "750正.jpg") as image:
+        assert image.size == (750, 750)
+    assert summary["status"] == "完成"
 
 
 def test_partial_detail_finds_original_and_replaces_region(tmp_path: Path) -> None:
