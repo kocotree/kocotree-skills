@@ -86,7 +86,9 @@ class BusinessSettingsTests(unittest.TestCase):
         """验证京东静态模板使用产品身份占位目录名。"""
         self.assertEqual(平台模板目录名["jd"], "产品货号 产品名称-京东")
         template_root = Path(__file__).resolve().parents[2] / "template"
-        jd_template = template_root / 平台模板目录名["jd"]
+        jd_root = template_root / 平台模板目录名["jd"]
+        self.assertEqual({path.name for path in jd_root.iterdir()}, {"790"})
+        jd_template = jd_root / "790"
         self.assertTrue(jd_template.is_dir())
         self.assertFalse((template_root / "京东").exists())
         self.assertTrue((jd_template / "1440主图").is_dir())
@@ -106,7 +108,10 @@ class BusinessSettingsTests(unittest.TestCase):
             with patch("platforms.jd._build_main_images"), patch(
                 "platforms.jd.get_image_group", return_value=[],
             ), patch("platforms.jd.scale_detail_pages"):
-                derive_jd(root / "输入", root / "天猫", output, {}, {})
+                result = derive_jd(root / "输入", root / "天猫", output, {}, {})
+            self.assertEqual(result, output)
+            self.assertEqual({path.name for path in output.iterdir()}, {"790"})
+            output = output / "790"
             for name in ("1080sku", "1440sku"):
                 self.assertTrue((output / name).is_dir())
                 self.assertEqual(list((output / name).iterdir()), [])
@@ -239,6 +244,32 @@ class BusinessSettingsTests(unittest.TestCase):
 
 class PlatformMainImageTests(unittest.TestCase):
     """验证天猫和京东高清主图的来源与尺寸。"""
+
+    def test_jd_outputs_images_and_audits_under_790(self) -> None:
+        """验证京东实际图片全部写入 790 层，质检读取同一层级。"""
+        from common.quality_audit import _audit_jd
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "输入"
+            tmall = root / "天猫"
+            output = root / "京东"
+            self._create_source(source / "主图/800/1.jpg", (800, 800), "blue")
+            self._create_source(source / "主图/750/1.jpg", (750, 1000), "green")
+            self._create_source(tmall / "790详情页/601.jpg", (790, 1000), "white")
+            report = new_report(source, None, output)
+            self.assertEqual(derive_jd(source, tmall, output, report, {}), output)
+            self.assertEqual({path.name for path in output.iterdir()}, {"790"})
+            self.assertEqual({path.name for path in (output / "790").iterdir()},
+                             {"1440主图", "1080主图", "1080sku", "1440sku", "透明图", "详情页"})
+            self._assert_size(output / "790/1440主图/1.jpg", (1440, 1440))
+            self._assert_size(output / "790/1080主图/1.jpg", (1080, 1440))
+            self._assert_size(output / "790/详情页/601.jpg", (790, 1000))
+            _audit_jd(output, report)
+            self.assertFalse(report["失败项"])
+            self._create_source(output / "790/1440主图/1.jpg", (100, 100), "blue")
+            _audit_jd(output, report)
+            self.assertTrue(any(item["信息"] == "京东主图尺寸不符合1440x1440" for item in report["警告"]))
 
     @staticmethod
     def _create_source(path: Path, size: tuple[int, int], color: str) -> None:

@@ -185,6 +185,7 @@ def _audit_cbme(root: Path, report: dict) -> None:
 
 
 def _audit_jd(root: Path, report: dict) -> None:
+    root = root / "790"
     for path in list_images(root, recursive=True):
         _check_file_size(path, 500, report)
     for path in list_images(root / "1440主图"):

@@ -35,10 +35,12 @@ def derive(
         京东平台输出目录路径。
     """
     platform_dir = ensure_dir(platform_dir)
-    _build_main_images(source_root, platform_dir, report)
-    ensure_dir(platform_dir / "1080sku")
-    ensure_dir(platform_dir / "1440sku")
-    transparent_dir = ensure_dir(platform_dir / "透明图")
+    content_dir = ensure_dir(platform_dir / "790")
+    logger.info("京东图片输出目录 path=%s", content_dir)
+    _build_main_images(source_root, content_dir, report)
+    ensure_dir(content_dir / "1080sku")
+    ensure_dir(content_dir / "1440sku")
+    transparent_dir = ensure_dir(content_dir / "透明图")
     transparent_base = resolve_source_path(source_root, "透明图")
     for source in get_image_group(source_root, "透明图", recursive=True):
         relative = color_output_relative_path(source, transparent_base, color_names, ".png")
@@ -53,7 +55,7 @@ def derive(
             平台,
             "透明图",
         )
-    scale_detail_pages(tmall_dir / "790详情页", platform_dir / "详情页", 790, 1600, 500 * 1024, report, 平台, "详情页")
+    scale_detail_pages(tmall_dir / "790详情页", content_dir / "详情页", 790, 1600, 500 * 1024, report, 平台, "详情页")
     return platform_dir
 
 
