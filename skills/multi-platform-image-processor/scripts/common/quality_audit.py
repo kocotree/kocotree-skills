@@ -185,7 +185,6 @@ def _audit_cbme(root: Path, report: dict) -> None:
 
 
 def _audit_jd(root: Path, report: dict) -> None:
-    root = root / "790"
     for path in list_images(root, recursive=True):
         _check_file_size(path, 500, report)
     for path in list_images(root / "1440主图"):
@@ -197,7 +196,7 @@ def _audit_jd(root: Path, report: dict) -> None:
         info = image_info(path)
         if not info.get("有透明通道"):
             add_warning(report, "京东透明图未检测到透明通道", 文件=str(path))
-    _check_detail_sequence(root / "详情页", 601, report)
+    _check_detail_sequence(root / "详情页" / "790", 601, report)
 
 
 def _audit_vip(root: Path, report: dict) -> None:
