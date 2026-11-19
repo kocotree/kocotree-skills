@@ -6,6 +6,7 @@ from common import ensure_dir, add_risk
 from common.color_naming import color_output_relative_path
 from common.detail_page_slice import scale_detail_pages
 from common.image_resize_compress import process_jpg_canvas
+from common.outfit_note import OutfitVariants
 from common.scan_source_pack import get_image_group, resolve_source_path
 from common.transparent_image_fit import process_vip_transparent_image
 
@@ -19,6 +20,8 @@ def derive(
     output_root: Path,
     report: dict,
     color_names: dict[Path, str],
+    *,
+    outfit_variants: OutfitVariants | None = None,
 ) -> Path:
     """生成唯品会图片。
 
@@ -29,6 +32,7 @@ def derive(
         output_root：产品输出目录。
         report：完整处理报告。
         color_names：透明图源路径到 SKU 颜色名称的映射。
+        outfit_variants：唯品会详情页的搭配销售备注替换计划。
     返回值：
         唯品会输出目录。
     """
@@ -56,5 +60,8 @@ def derive(
             平台,
             "1200透明图",
         )
-    scale_detail_pages(tmall_dir / "790详情页", platform_dir / "750详情页", 750, 1600, 500 * 1024, report, 平台, "750详情页")
+    scale_detail_pages(
+        tmall_dir / "790详情页", platform_dir / "750详情页", 750, 1600, 500 * 1024, report, 平台, "750详情页",
+        outfit_variants=outfit_variants,
+    )
     return platform_dir

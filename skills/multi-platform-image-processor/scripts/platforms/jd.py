@@ -7,6 +7,7 @@ from common import ensure_dir
 from common.color_naming import color_output_relative_path
 from common.detail_page_slice import scale_detail_pages
 from common.image_resize_compress import process_jpg_canvas, process_jpg_original_or_compress
+from common.outfit_note import OutfitVariants
 from common.scan_source_pack import get_image_group, resolve_source_path
 from common.transparent_image_fit import process_square_transparent_image
 
@@ -21,6 +22,8 @@ def derive(
     platform_dir: Path,
     report: dict,
     color_names: dict[Path, str],
+    *,
+    outfit_variants: OutfitVariants | None = None,
 ) -> Path:
     """从源素材和天猫已生成详情页生成京东平台图片包。
 
@@ -30,6 +33,7 @@ def derive(
         platform_dir: 包含产品货号和名称的京东平台输出目录。
         report: 处理报告，记录图片结果、风险、警告和失败项。
         color_names: 白底图、透明图源路径到 SKU 颜色名称的映射。
+        outfit_variants: 京东详情页的搭配销售备注替换计划。
 
     返回值：
         京东平台输出目录路径。
@@ -55,7 +59,10 @@ def derive(
             平台,
             "透明图",
         )
-    scale_detail_pages(tmall_dir / "790详情页", detail_dir, 790, 1600, 500 * 1024, report, 平台, "详情页")
+    scale_detail_pages(
+        tmall_dir / "790详情页", detail_dir, 790, 1600, 500 * 1024, report, 平台, "详情页",
+        outfit_variants=outfit_variants,
+    )
     return platform_dir
 
 

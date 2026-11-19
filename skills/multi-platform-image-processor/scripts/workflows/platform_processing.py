@@ -15,6 +15,7 @@ from common import (
 )
 from common.quality_audit import audit_sku_branch_outputs, run_quality_audit
 from common.color_naming import resolve_color_names
+from common.outfit_note import collect_outfit_variants
 from platforms.cbme import derive as derive_cbme
 from platforms.fengxiang_aikucun import derive as derive_fengxiang_aikucun
 from platforms.jd import derive as derive_jd
@@ -133,9 +134,10 @@ def run_platform_processing(
         copy_template_empty_dirs(template, 平台模板目录名[key], platform_directories[key])
 
     tmall_dir = build_tmall(source, output, report, detail_plan, detail_overrides, color_names)
+    outfit_variants = collect_outfit_variants(tmall_dir / "790详情页", report, detail_overrides)
     derive_cbme(source, tmall_dir, output, report)
-    derive_jd(source, tmall_dir, platform_directories["jd"], report, color_names)
-    derive_vip(source, tmall_dir, output, report, color_names)
+    derive_jd(source, tmall_dir, platform_directories["jd"], report, color_names, outfit_variants=outfit_variants)
+    derive_vip(source, tmall_dir, output, report, color_names, outfit_variants=outfit_variants)
     derive_fengxiang_aikucun(
         source, tmall_dir, output, report, color_names,
         color_text_plan=color_text_plan, detail_plan=detail_plan, detail_overrides=detail_overrides,

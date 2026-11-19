@@ -94,6 +94,7 @@ def build(
                 report,
                 平台,
                 "790详情页",
+                module_records=report["详情页模块"]["模块顺序"],
             )
     except Exception as exc:
         add_failure(report, "详情页模块检查与排序失败", 错误=str(exc))

@@ -10,6 +10,7 @@ from PIL import Image
 from .utils import list_images, ensure_dir, add_failure, add_risk, add_warning
 from .scan_source_pack import resolve_source_path
 from .image_resize_compress import open_image, save_jpg_under
+from .outfit_note import OutfitVariants, draw_outfit_note
 
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
     "尺码表": 5,
     "尺码快选": 6,
     "挑颜色": 7,
+    "搭配": 7,
     "卖点": 7,
     "面料": 7,
     "认证": 7,
@@ -180,6 +182,8 @@ def prepare_ordered_detail_sources(
                 "源顺序": source_order[source.resolve()],
                 "区域顺序": box[1] if box is not None else 0,
                 "计划顺序": index,
+                **({"搭配备注": item["搭配备注"]}
+                   if not preserve_source_order and module_type == "搭配" and "搭配备注" in item else {}),
             }
         )
 
@@ -238,6 +242,7 @@ def prepare_ordered_detail_sources(
                 "源图": str(source),
                 "面料已修正": render_source != source,
                 "区域": list(box) if box is not None else [],
+                **({"搭配备注": item["搭配备注"]} if "搭配备注" in item else {}),
             }
         )
     report_key = "蜂享家详情页模块" if preserve_source_order else "详情页模块"
@@ -292,24 +297,75 @@ def generate_sequential_detail_pages(
     platform: str,
     usage: str,
     start_number: int = 601,
+    *,
+    module_records: list[dict] | None = None,
+    outfit_variants: OutfitVariants | None = None,
 ) -> list[Path]:
+    """按顺序缩放、切分和保存详情图片。
+
+    参数：
+        sources：按展示顺序排列的详情图路径。
+        output_dir：平台详情图输出目录。
+        width：目标宽度。
+        max_height：单张高度上限。
+        max_bytes：单张文件大小上限。
+        report：记录图片产物与异常的报告。
+        platform：所属平台。
+        usage：图片用途。
+        start_number：连续编号的起始值。
+        module_records：与输入对齐的模块记录，用于登记搭配模块对应的切片。
+        outfit_variants：平台专用搭配模块替换计划。
+    返回值：
+        按连续编号排列的输出路径。
+    """
     ensure_dir(output_dir)
     outputs: list[Path] = []
     number = start_number
-    for source in sources:
+    variants = outfit_variants or {}
+    for index, source in enumerate(sources):
+        note = variants.get(source)
+        if source in variants and note is None:
+            continue
         try:
-            image = open_image(source)
+            actual_source = note.source if note else source
+            if note and note.region is not None:
+                with Image.open(actual_source) as original:
+                    image = original.crop(note.region)
+            else:
+                image = open_image(actual_source)
             ratio = width / image.width
             resized = image.resize((width, max(1, round(image.height * ratio))), Image.Resampling.LANCZOS)
+            actions = [f"缩放到宽{width}px", f"高度限制{max_height}px"]
+            note_drawn = False
+            if note:
+                try:
+                    resized = draw_outfit_note(resized, note, image.height)
+                    note_drawn = True
+                    actions.append("绘制搭配销售备注")
+                except (OSError, ValueError, RuntimeError) as exc:
+                    logger.warning("搭配备注未绘制 platform=%s source=%s error=%s", platform, actual_source, exc)
+                    add_failure(report, "生成搭配销售备注失败", 平台=platform, 源文件=str(actual_source), 错误=str(exc))
             pieces = split_by_height(resized, max_height)
+            last_height = min(300, max_height // 2)
+            if note_drawn and len(pieces) > 1 and pieces[-1].height < last_height:
+                # 给带备注的末张保留足够画面，避免产生仅有文字的小切片。
+                boundary = resized.height - last_height
+                previous_top = (len(pieces) - 2) * max_height
+                pieces[-2:] = [
+                    resized.crop((0, previous_top, width, boundary)),
+                    resized.crop((0, boundary, width, resized.height)),
+                ]
             if len(pieces) > 1:
-                add_risk(report, "详情页单图超过高度限制，已自动切分，可能切到完整模块", 源文件=str(source), 切片数=len(pieces))
+                add_risk(report, "详情页单图超过高度限制，已自动切分，可能切到完整模块", 源文件=str(actual_source), 切片数=len(pieces))
+            first_output = len(outputs)
             for piece in pieces:
                 output = output_dir / f"{number}.jpg"
-                saved = save_jpg_under(piece, output, max_bytes, report, source, platform, usage, [f"缩放到宽{width}px", f"高度限制{max_height}px"])
+                saved = save_jpg_under(piece, output, max_bytes, report, actual_source, platform, usage, actions)
                 if saved:
                     outputs.append(saved)
                     number += 1
+            if module_records is not None and "搭配备注" in module_records[index]:
+                module_records[index]["搭配切片"] = [path.name for path in outputs[first_output:]]
         except Exception as exc:
             add_failure(report, "生成详情页失败", 源文件=str(source), 错误=str(exc))
     return outputs
@@ -324,8 +380,13 @@ def scale_detail_pages(
     report: dict,
     platform: str,
     usage: str,
+    *,
+    outfit_variants: OutfitVariants | None = None,
 ) -> list[Path]:
-    return generate_sequential_detail_pages(list_images(source_dir), output_dir, width, max_height, max_bytes, report, platform, usage)
+    return generate_sequential_detail_pages(
+        list_images(source_dir), output_dir, width, max_height, max_bytes, report, platform, usage,
+        outfit_variants=outfit_variants,
+    )
 
 
 def merge_long_detail_slices(
